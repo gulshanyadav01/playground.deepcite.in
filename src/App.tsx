@@ -9,6 +9,7 @@ import ModelQuery from './pages/ModelQuery';
 import TestData from './pages/evaluate/TestData';
 import Metrics from './pages/evaluate/Metrics';
 import Compare from './pages/evaluate/Compare';
+import MonitoringDashboard from './pages/monitoring/Dashboard';
 import Settings from './pages/Settings';
 
 function App() {
@@ -26,6 +27,7 @@ function App() {
           <Route path="metrics" element={<Metrics />} />
           <Route path="compare" element={<Compare />} />
         </Route>
+        <Route path="monitoring" element={<MonitoringDashboard />} />
         <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>

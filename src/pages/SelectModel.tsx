@@ -7,6 +7,7 @@ import { Button } from '../components/ui/Button';
 import { Tooltip } from '../components/ui/Tooltip';
 import { ModelsGrid } from '../components/models/ModelsGrid';
 import { ModelInfo } from '../components/models/ModelCard';
+import { AnimatedLoader } from '../components/ui/AnimatedLoader';
 
 // Mock data - in a real app this would come from an API
 const baseModels: ModelInfo[] = [
@@ -130,10 +131,7 @@ export default function SelectModel() {
         <div className="lg:col-span-2">
           {isLoadingModels ? (
             <Card className="w-full h-64 flex items-center justify-center">
-              <div className="flex flex-col items-center space-y-4">
-                <div className="w-10 h-10 border-4 border-primary-600 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Loading models...</p>
-              </div>
+              <AnimatedLoader variant="orbit" size="lg" text="Loading models..." />
             </Card>
           ) : (
             <ModelsGrid 
@@ -200,14 +198,7 @@ export default function SelectModel() {
                     </label>
                     <div className="rounded-md border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 h-32 overflow-auto">
                       {isLoading ? (
-                        <div className="flex items-center space-x-2">
-                          <div className="animate-pulse flex space-x-1">
-                            <div className="h-2 w-2 bg-primary-500 rounded-full"></div>
-                            <div className="h-2 w-2 bg-primary-500 rounded-full"></div>
-                            <div className="h-2 w-2 bg-primary-500 rounded-full"></div>
-                          </div>
-                          <span className="text-sm text-gray-500">Generating response...</span>
-                        </div>
+                        <AnimatedLoader variant="wave" size="sm" text="Generating response..." />
                       ) : (
                         <p className="text-sm whitespace-pre-line">{response}</p>
                       )}
