@@ -30,11 +30,11 @@ interface LogEntry {
   config?: Record<string, unknown>;
 }
 
-type TrainingStatus = 'initializing' | 'training' | 'validating' | 'finalizing' | 'completed';
+type TrainingStatus = 'not_started' | 'initializing' | 'training' | 'validating' | 'finalizing' | 'completed';
 
 export default function TuningProgress() {
   const navigate = useNavigate();
-  const [currentStatus, setCurrentStatus] = useState<TrainingStatus>('initializing');
+  const [currentStatus, setCurrentStatus] = useState<TrainingStatus>('not_started');
   const [progress, setProgress] = useState(0);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isPaused, setIsPaused] = useState(false);
@@ -153,10 +153,24 @@ export default function TuningProgress() {
     if (isPaused || currentStatus === 'completed') return;
 
     const interval = setInterval(async () => {
-      setTimeElapsed(prev => prev + 2);
-
       const fetchedLogs = await fetchLogsFromAPI();
       setLogs(fetchedLogs);
+      
+      // Check if any training logs exist to determine if training has started
+      const hasTrainingLogs = fetchedLogs.length > 0 && 
+        fetchedLogs.some(log => ['training_step', 'epoch_begin', 'epoch_end'].includes(log.type));
+      
+      if (!hasTrainingLogs) {
+        // No training has started yet
+        setCurrentStatus('not_started');
+        setProgress(0);
+        setTimeElapsed(0);
+        setTimeRemaining(0);
+        return;
+      }
+
+      // Training has started, increment time and update progress
+      setTimeElapsed(prev => prev + 2);
       
       // Get actual progress from training_step logs
       const currentProgress = getProgressFromLogs(fetchedLogs);
@@ -166,7 +180,10 @@ export default function TuningProgress() {
       const estimatedRemaining = calculateEstimatedRemainingTime(fetchedLogs);
       setTimeRemaining(estimatedRemaining);
 
-      if (currentProgress < 10) {
+      // Update status based on progress
+      if (currentProgress === 0) {
+        setCurrentStatus('initializing');
+      } else if (currentProgress < 10) {
         setCurrentStatus('initializing');
       } else if (currentProgress < 80) {
         setCurrentStatus('training');
@@ -205,6 +222,8 @@ export default function TuningProgress() {
 
   const getStatusLabel = (status: TrainingStatus): string => {
     switch (status) {
+      case 'not_started':
+        return 'Not Started';
       case 'initializing':
         return 'Initializing';
       case 'training':
@@ -215,6 +234,8 @@ export default function TuningProgress() {
         return 'Finalizing';
       case 'completed':
         return 'Completed';
+      default:
+        return 'Unknown';
     }
   };
 
@@ -238,7 +259,9 @@ export default function TuningProgress() {
                 </Badge>
               </div>
               <CardDescription>
-                {currentStatus === 'completed'
+                {currentStatus === 'not_started'
+                  ? 'No training job is currently active. Start a fine-tuning job to see progress here.'
+                  : currentStatus === 'completed'
                   ? 'Your model has been successfully fine-tuned and is ready for use'
                   : 'Your model is currently being fine-tuned'}
               </CardDescription>
@@ -264,16 +287,20 @@ export default function TuningProgress() {
                   </span>
                 </div>
 
-                {timeRemaining > 0 ? (
+                {currentStatus === 'not_started' ? (
+                  <div className="text-gray-500 dark:text-gray-400">
+                    Waiting for training to start...
+                  </div>
+                ) : timeRemaining > 0 ? (
                   <div className="text-gray-700 dark:text-gray-300">
                     Estimated remaining: <span className="font-medium">{formatTime(timeRemaining)}</span>
                   </div>
-                ) : (
+                ) : currentStatus === 'completed' ? (
                   <div className="flex items-center gap-1.5 text-success-600 dark:text-success-400">
                     <CheckCircle2 className="h-4 w-4" />
                     <span className="font-medium">Completed</span>
                   </div>
-                )}
+                ) : null}
               </div>
 
               <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
@@ -315,7 +342,7 @@ export default function TuningProgress() {
                 </AnimatePresence>
               </div>
 
-              {currentStatus !== 'completed' && (
+              {currentStatus !== 'completed' && currentStatus !== 'not_started' && (
                 <div className="flex justify-center pt-2">
                   <Button
                     variant={isPaused ? 'primary' : 'outline'}
@@ -328,6 +355,27 @@ export default function TuningProgress() {
               )}
             </CardContent>
           </Card>
+
+          {currentStatus === 'not_started' && (
+            <Card className="bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800">
+              <CardContent className="p-6">
+                <div className="text-center">
+                  <div className="bg-blue-100 dark:bg-blue-900/20 rounded-full p-3 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                    <Timer className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <h3 className="font-semibold text-lg text-blue-800 dark:text-blue-300 mb-2">
+                    No Training Job Active
+                  </h3>
+                  <p className="text-blue-700 dark:text-blue-400 mb-4">
+                    Start a fine-tuning job to monitor its progress here. You can configure and start training from the tuning configuration page.
+                  </p>
+                  <Button variant="primary" onClick={() => navigate('/configure')}>
+                    Start Fine-Tuning
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {currentStatus === 'completed' && (
             <motion.div

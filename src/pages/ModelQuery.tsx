@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { motion } from 'framer-motion';
 import { chatApi, Model } from '../services/chatApi';
+import { AnimatedLoader } from '../components/ui/AnimatedLoader';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -253,8 +254,7 @@ export default function ModelQuery() {
             <CardContent className="space-y-4">
               {isLoadingModels ? (
                 <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
-                  <span className="ml-2 text-sm text-gray-500">Loading models...</span>
+                  <AnimatedLoader variant="brain" size="md" text="Loading models..." />
                 </div>
               ) : modelError ? (
                 <div className="flex flex-col items-center justify-center py-8 space-y-3">
@@ -317,10 +317,15 @@ export default function ModelQuery() {
                     {/* Model Status Display */}
                     <div className="mt-2 space-y-1">
                       {isLoadingModel && (
-                        <div className="flex items-center text-sm text-blue-600">
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                          Loading "{selectedModel?.name}"...
-                        </div>
+                        <motion.div 
+                          className="flex items-center text-sm text-blue-600"
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.3 }}
+                        >
+                          <AnimatedLoader variant="neural" size="sm" />
+                          <span className="ml-2">Loading "{selectedModel?.name}"...</span>
+                        </motion.div>
                       )}
                       
                       {modelLoadSuccess && !isLoadingModel && (
@@ -575,6 +580,9 @@ export default function ModelQuery() {
                           )}
                           <div className="text-sm whitespace-pre-line">
                             {message.content}
+                            {message.role === 'assistant' && message.content === '' && isGenerating && (
+                              <AnimatedLoader variant="typing" size="sm" />
+                            )}
                           </div>
                         </div>
                       </div>

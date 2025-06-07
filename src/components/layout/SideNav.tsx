@@ -1,8 +1,9 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Layers, MessageSquare, Settings, Menu, X, Brain, ChevronDown, LineChart } from 'lucide-react';
+import { Home, Layers, MessageSquare, Settings, Menu, X, Brain, ChevronDown, LineChart, Activity, BarChart3 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import UserProfile from './UserProfile';
 
 const trainSteps = [
   { path: '/select-model', label: 'Select Model' },
@@ -22,6 +23,7 @@ const navItems = [
   { icon: Brain, label: 'Train', path: '/select-model', subItems: trainSteps },
   { icon: LineChart, label: 'Evaluate', path: '/evaluate/test-data', subItems: evaluateSteps },
   { icon: MessageSquare, label: 'Chat', path: '/query' },
+  { icon: Activity, label: 'Monitor', path: '/monitoring' },
   { icon: Settings, label: 'Settings', path: '/settings' },
 ];
 
@@ -63,18 +65,23 @@ export function SideNav() {
             transition={{ duration: 0.2 }}
             className={cn(
               "bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700",
-              "w-64 md:w-72 shrink-0 overflow-y-auto",
+              "w-60 shrink-0 overflow-y-auto",
               "fixed md:sticky top-0 bottom-0 left-0 z-10 md:z-0",
               isOpen ? "block" : "hidden md:block",
               "md:h-screen"
             )}
           >
-            <div className="p-6">
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold text-primary-600 dark:text-primary-400">LaaP Studio</h1>
-              </div>
-              
-              <nav className="mt-8 space-y-1">
+            <div className="flex flex-col h-full">
+              {/* Header */}
+              <div className="p-4">
+                <div className="flex items-center gap-3 mb-8">
+                  <div className="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center">
+                    <BarChart3 className="h-5 w-5 text-white" />
+                  </div>
+                  <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">LaaP Studio</h1>
+                </div>
+                
+                <nav className="space-y-1">
                 {navItems.map((item) => {
                   const isActive = pathname === item.path;
                   const isExpanded = expandedItem === item.path;
@@ -94,13 +101,18 @@ export function SideNav() {
                           }
                         }}
                         className={cn(
-                          "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer",
+                          "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer group",
                           (isActive || isSubItemActive)
-                            ? "bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400"
-                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                            ? "bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 shadow-sm"
+                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-900 dark:hover:text-gray-200"
                         )}
                       >
-                        <Icon className="h-5 w-5" />
+                        <Icon className={cn(
+                          "h-5 w-5 transition-colors",
+                          (isActive || isSubItemActive) 
+                            ? "text-primary-500" 
+                            : "text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300"
+                        )} />
                         <span className="flex-1">{item.label}</span>
                         {hasSubItems && (
                           <ChevronDown 
@@ -127,15 +139,18 @@ export function SideNav() {
                                 to={subItem.path}
                                 onClick={() => setIsOpen(false)}
                                 className={cn(
-                                  "flex items-center pl-8 py-2 text-sm rounded-md relative",
+                                  "flex items-center pl-6 py-2 text-sm rounded-lg relative transition-all duration-200 group",
                                   isSubActive
                                     ? "text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20"
-                                    : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                                    : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"
                                 )}
                               >
-                                <span className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 mr-2 text-xs font-medium">
-                                  {index + 1}
-                                </span>
+                                <div className={cn(
+                                  "w-1.5 h-1.5 rounded-full mr-3 transition-colors",
+                                  isSubActive 
+                                    ? "bg-primary-500" 
+                                    : "bg-gray-300 dark:bg-gray-600 group-hover:bg-gray-400"
+                                )} />
                                 {subItem.label}
                               </Link>
                             );
@@ -145,7 +160,13 @@ export function SideNav() {
                     </div>
                   );
                 })}
-              </nav>
+                </nav>
+              </div>
+              
+              {/* User Profile at bottom */}
+              <div className="mt-auto p-4 border-t border-gray-200 dark:border-gray-700">
+                <UserProfile />
+              </div>
             </div>
           </motion.aside>
         )}

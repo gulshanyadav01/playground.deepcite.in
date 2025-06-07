@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Button';
 import { ModelInfo } from '../components/models/ModelCard';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { AnimatedLoader } from '../components/ui/AnimatedLoader';
 
 // Mock data - in a real app this would come from an API
 const recentModels: ModelInfo[] = [
@@ -59,7 +60,7 @@ export default function Dashboard() {
   }, []);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 p-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
@@ -95,7 +96,7 @@ export default function Dashboard() {
                     </p>
                     <h3 className="text-2xl font-bold mt-1">
                       {isLoading ? (
-                        <div className="h-8 w-16 bg-gray-200 dark:bg-gray-700 animate-pulse rounded" />
+                        <AnimatedLoader variant="pulse" size="sm" />
                       ) : (
                         item.value
                       )}
@@ -122,24 +123,16 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {isLoading ? (
             Array(3).fill(0).map((_, i) => (
-              <Card key={i} className="h-64">
-                <CardHeader>
-                  <div className="h-6 w-3/4 bg-gray-200 dark:bg-gray-700 animate-pulse rounded mb-2" />
-                  <div className="h-4 w-full bg-gray-200 dark:bg-gray-700 animate-pulse rounded" />
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="h-8 bg-gray-200 dark:bg-gray-700 animate-pulse rounded" />
-                      <div className="h-8 bg-gray-200 dark:bg-gray-700 animate-pulse rounded" />
-                    </div>
-                    <div className="flex justify-between">
-                      <div className="h-8 w-20 bg-gray-200 dark:bg-gray-700 animate-pulse rounded" />
-                      <div className="h-8 w-20 bg-gray-200 dark:bg-gray-700 animate-pulse rounded" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3, delay: i * 0.1 }}
+              >
+                <Card className="h-64 flex items-center justify-center">
+                  <AnimatedLoader variant="dots" size="md" text="Loading models..." />
+                </Card>
+              </motion.div>
             ))
           ) : (
             recentModels.map((model, index) => (
