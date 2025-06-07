@@ -183,11 +183,12 @@ export default function TuningProgress() {
     return () => clearInterval(interval);
   }, [isPaused, currentStatus]);
 
-  // Helper to format time (seconds to mm:ss)
+  // Helper to format time (seconds to hr:mm:ss)
   const formatTime = (timeInSeconds: number) => {
-    const minutes = Math.floor(timeInSeconds / 60);
+    const hours = Math.floor(timeInSeconds / 3600);
+    const minutes = Math.floor((timeInSeconds % 3600) / 60);
     const seconds = timeInSeconds % 60;
-    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+    return `${hours}:${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   };
 
   const getStatusVariant = (status: TrainingStatus): 'primary' | 'secondary' | 'success' => {
