@@ -242,7 +242,7 @@ export default function TuningProgress() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Fine-Tuning Progress</h1>
+        <h1 className="text-xl font-bold tracking-tight">Fine-Tuning Progress</h1>
         <p className="text-gray-500 dark:text-gray-400 mt-1">
           Monitor your model training in real-time
         </p>
@@ -478,7 +478,7 @@ export default function TuningProgress() {
                         <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Training Loss</span>
                       </div>
                       <div className="mt-1">
-                        <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        <span className="text-base font-semibold text-gray-900 dark:text-gray-100">
                           {getLatestTrainingMetrics(logs).loss}
                         </span>
                       </div>
@@ -489,7 +489,7 @@ export default function TuningProgress() {
                         <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Validation Loss</span>
                       </div>
                       <div className="mt-1">
-                        <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        <span className="text-base font-semibold text-gray-900 dark:text-gray-100">
                           {getLatestValidationMetrics(logs).evalLoss}
                         </span>
                       </div>
@@ -503,7 +503,7 @@ export default function TuningProgress() {
                         <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Current Epoch</span>
                       </div>
                       <div className="mt-1">
-                        <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        <span className="text-base font-semibold text-gray-900 dark:text-gray-100">
                           {getCurrentEpochInfo(logs).display}
                         </span>
                       </div>
@@ -528,7 +528,7 @@ export default function TuningProgress() {
                         <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Current Step</span>
                       </div>
                       <div className="mt-1">
-                        <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        <span className="text-base font-semibold text-gray-900 dark:text-gray-100">
                           {getLatestTrainingMetrics(logs).step}
                         </span>
                         <span className="text-sm text-gray-500 dark:text-gray-400 ml-1">
@@ -542,7 +542,7 @@ export default function TuningProgress() {
                         <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Avg Step Time</span>
                       </div>
                       <div className="mt-1">
-                        <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        <span className="text-base font-semibold text-gray-900 dark:text-gray-100">
                           {getLatestTrainingMetrics(logs).avgStepTime}
                         </span>
                         <span className="text-sm text-gray-500 dark:text-gray-400 ml-1">sec</span>

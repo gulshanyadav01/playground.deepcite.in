@@ -74,6 +74,18 @@ export default {
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
       },
+      fontSize: {
+        'xs': ['0.75rem', { lineHeight: '1rem' }],     // 12px
+        'sm': ['0.875rem', { lineHeight: '1.25rem' }], // 14px
+        'base': ['1rem', { lineHeight: '1.5rem' }],    // 16px
+        'lg': ['1.125rem', { lineHeight: '1.75rem' }], // 18px -> reduced from default
+        'xl': ['1.25rem', { lineHeight: '1.75rem' }],  // 20px -> reduced from default
+        '2xl': ['1.5rem', { lineHeight: '2rem' }],     // 24px -> reduced from default
+        '3xl': ['1.875rem', { lineHeight: '2.25rem' }], // 30px -> reduced from default
+        '4xl': ['2.25rem', { lineHeight: '2.5rem' }],  // 36px -> reduced from default
+        '5xl': ['3rem', { lineHeight: '1' }],          // 48px -> reduced from default
+        '6xl': ['3.75rem', { lineHeight: '1' }],       // 60px -> reduced from default
+      },
       boxShadow: {
         'card': '0 0 0 1px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.05)',
         'card-hover': '0 0 0 1px rgba(0, 0, 0, 0.05), 0 5px 15px rgba(0, 0, 0, 0.1)',
