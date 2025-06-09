@@ -4,9 +4,11 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { cn } from '../../utils/cn';
 import { Button } from '../../components/ui/Button';
 import { useDropzone } from 'react-dropzone';
-import { Upload, FileText, AlertTriangle, ArrowRight, Brain } from 'lucide-react';
+import { Upload, FileText, AlertTriangle, ArrowRight, Brain, CheckCircle } from 'lucide-react';
 import { ModelsGrid } from '../../components/models/ModelsGrid';
 import { ModelInfo } from '../../components/models/ModelCard';
+import { evaluationService } from '../../services/evaluationService';
+import { chatApi } from '../../services/chatApi';
 
 // Mock data - in a real app this would come from an API
 const availableModels: ModelInfo[] = [
@@ -45,22 +47,125 @@ export default function TestData() {
   const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [validationResult, setValidationResult] = useState<any>(null);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: {
       'text/csv': ['.csv'],
-      'application/json': ['.json']
+      'application/json': ['.json'],
+      'application/jsonl': ['.jsonl']
     },
     maxFiles: 1,
-    onDrop: (acceptedFiles) => setFile(acceptedFiles[0])
+    onDrop: async (acceptedFiles) => {
+      const uploadedFile = acceptedFiles[0];
+      setFile(uploadedFile);
+      setError(null);
+      setValidationResult(null);
+
+      // Validate file format
+      if (uploadedFile) {
+        try {
+          const fileType = evaluationService.getFileType(uploadedFile.name);
+          if (!fileType) {
+            setError('Unsupported file format. Please upload CSV, JSON, or JSONL files.');
+            return;
+          }
+
+          // For small files, validate the content
+          if (uploadedFile.size < 1024 * 1024) { // Less than 1MB
+            const text = await uploadedFile.text();
+            let data: any[];
+
+            if (fileType === 'csv') {
+              // Basic CSV validation - just check if it has headers
+              const lines = text.split('\n').filter(line => line.trim());
+              if (lines.length < 2) {
+                setError('CSV file must have at least a header row and one data row.');
+                return;
+              }
+              setValidationResult({ 
+                isValid: true, 
+                totalRows: lines.length - 1,
+                fileType: 'CSV'
+              });
+            } else if (fileType === 'json') {
+              try {
+                data = JSON.parse(text);
+                if (!Array.isArray(data)) {
+                  data = [data]; // Convert single object to array
+                }
+                const validation = evaluationService.validateTestData(data);
+                setValidationResult({
+                  ...validation,
+                  totalRows: data.length,
+                  fileType: 'JSON'
+                });
+                if (!validation.isValid) {
+                  setError(`Validation errors: ${validation.errors.join(', ')}`);
+                }
+              } catch (e) {
+                setError('Invalid JSON format. Please check your file.');
+              }
+            } else if (fileType === 'jsonl') {
+              try {
+                const lines = text.split('\n').filter(line => line.trim());
+                data = lines.map(line => JSON.parse(line));
+                const validation = evaluationService.validateTestData(data);
+                setValidationResult({
+                  ...validation,
+                  totalRows: data.length,
+                  fileType: 'JSONL'
+                });
+                if (!validation.isValid) {
+                  setError(`Validation errors: ${validation.errors.join(', ')}`);
+                }
+              } catch (e) {
+                setError('Invalid JSONL format. Each line must be valid JSON.');
+              }
+            }
+          } else {
+            // For large files, just show basic info
+            setValidationResult({
+              isValid: true,
+              totalRows: 'Large file - will validate during upload',
+              fileType: fileType.toUpperCase()
+            });
+          }
+        } catch (e) {
+          setError('Error validating file. Please try again.');
+        }
+      }
+    }
   });
 
-  const handleContinue = () => {
+  const handleStartEvaluation = async () => {
     if (!selectedModel || !file) return;
     
-    // Store selected model in localStorage for use in metrics page
-    localStorage.setItem('evaluationModel', JSON.stringify(selectedModel));
-    navigate('/evaluate/metrics');
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Get model path - use the model name for now
+      const modelPath = selectedModel.name;
+      
+      // Start prediction job with file upload
+      const response = await evaluationService.startPredictionJobWithFile(
+        modelPath,
+        file,
+        50 // batch size
+      );
+
+      // Store job info and navigate to metrics page
+      localStorage.setItem('evaluationJobId', response.job_id);
+      localStorage.setItem('evaluationModel', JSON.stringify(selectedModel));
+      
+      navigate('/evaluate/metrics');
+    } catch (error: any) {
+      setError(error.message || 'Failed to start evaluation. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -123,6 +228,38 @@ export default function TestData() {
                 </div>
               </div>
 
+              {error && (
+                <div className="p-4 bg-error-50 dark:bg-error-900/20 rounded-lg border border-error-200 dark:border-error-800">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-5 w-5 text-error-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-error-800 dark:text-error-200">
+                        Validation Error
+                      </p>
+                      <p className="text-sm text-error-700 dark:text-error-300 mt-1">
+                        {error}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {validationResult && validationResult.isValid && (
+                <div className="p-4 bg-success-50 dark:bg-success-900/20 rounded-lg border border-success-200 dark:border-success-800">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle className="h-5 w-5 text-success-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-success-800 dark:text-success-200">
+                        File Validated Successfully
+                      </p>
+                      <p className="text-sm text-success-700 dark:text-success-300 mt-1">
+                        {validationResult.fileType} file with {validationResult.totalRows} rows ready for evaluation
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {file && (
                 <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
                   <div className="flex items-center">
@@ -141,10 +278,10 @@ export default function TestData() {
               <Button
                 variant="primary"
                 rightIcon={<ArrowRight className="h-4 w-4" />}
-                disabled={!selectedModel || !file}
-                onClick={handleContinue}
+                disabled={!selectedModel || !file || isLoading}
+                onClick={handleStartEvaluation}
               >
-                Continue to Evaluation
+                {isLoading ? 'Starting Evaluation...' : 'Start Evaluation'}
               </Button>
             </CardFooter>
           </Card>

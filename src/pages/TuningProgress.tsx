@@ -6,6 +6,8 @@ import { Progress } from '../components/ui/Progress';
 import { Badge } from '../components/ui/Badge';
 import { Timer, CheckCircle2, ChevronDown, Play, Pause, FileDown, ArrowUpRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import TrainingLossChart from '../components/training/TrainingLossChart';
+import trainingSessionService from '../services/trainingSessionService';
 
 interface LogEntry {
   timestamp: string;
@@ -41,6 +43,9 @@ export default function TuningProgress() {
   const [timeElapsed, setTimeElapsed] = useState(0);
   const [timeRemaining, setTimeRemaining] = useState(1800); // 30 minutes in seconds
   const [showDetails, setShowDetails] = useState(false);
+
+  // Get current training session
+  const currentSession = trainingSessionService.getCurrentSession();
 
   // Function to fetch logs from the API
   const fetchLogsFromAPI = async (): Promise<LogEntry[]> => {
@@ -102,16 +107,22 @@ export default function TuningProgress() {
 
   // Function to get latest training metrics from logs
   const getLatestTrainingMetrics = (logs: LogEntry[]) => {
+    // Get loss from metrics logs
+    const latestMetricsLog = logs
+      .filter(log => log.type === 'metrics' && log.metrics?.loss !== undefined)
+      .pop();
+    
+    // Get other training info from training_step logs
     const latestTrainingStep = logs
       .filter(log => log.type === 'training_step')
       .pop();
     
     return {
-      loss: latestTrainingStep?.loss?.toFixed(4) || 'N/A',
-      learningRate: latestTrainingStep?.learning_rate?.toExponential(2) || 'N/A',
-      step: latestTrainingStep?.step || 0,
+      loss: latestMetricsLog?.metrics?.loss ? (latestMetricsLog.metrics.loss as number).toFixed(4) : 'N/A',
+      learningRate: (latestMetricsLog?.metrics?.learning_rate as number)?.toExponential(2) || latestTrainingStep?.learning_rate?.toExponential(2) || 'N/A',
+      step: latestTrainingStep?.step || latestMetricsLog?.step || 0,
       remainingSteps: latestTrainingStep?.remaining_steps || 0,
-      gradNorm: latestTrainingStep?.grad_norm?.toFixed(6) || 'N/A',
+      gradNorm: (latestMetricsLog?.metrics?.grad_norm as number)?.toFixed(6) || latestTrainingStep?.grad_norm?.toFixed(6) || 'N/A',
       stepTime: latestTrainingStep?.step_time?.toFixed(3) || 'N/A',
       avgStepTime: latestTrainingStep?.avg_step_time?.toFixed(3) || 'N/A'
     };
@@ -155,6 +166,23 @@ export default function TuningProgress() {
     const interval = setInterval(async () => {
       const fetchedLogs = await fetchLogsFromAPI();
       setLogs(fetchedLogs);
+      
+      // Debug: Log the fetched data to console
+      console.log('Fetched logs:', fetchedLogs.length, 'entries');
+      
+      // Debug: Check for metrics logs specifically
+      const metricsLogs = fetchedLogs.filter(log => log.type === 'metrics');
+      console.log('Metrics logs found:', metricsLogs.length);
+      if (metricsLogs.length > 0) {
+        console.log('Latest metrics log:', metricsLogs[metricsLogs.length - 1]);
+      }
+      
+      // Debug: Check for training_step logs
+      const trainingStepLogs = fetchedLogs.filter(log => log.type === 'training_step');
+      console.log('Training step logs found:', trainingStepLogs.length);
+      if (trainingStepLogs.length > 0) {
+        console.log('Latest training step log:', trainingStepLogs[trainingStepLogs.length - 1]);
+      }
       
       // Check if any training logs exist to determine if training has started
       const hasTrainingLogs = fetchedLogs.length > 0 && 
@@ -356,6 +384,11 @@ export default function TuningProgress() {
             </CardContent>
           </Card>
 
+          {/* Training Loss Chart - Show when training has started */}
+          {currentStatus !== 'not_started' && logs.length > 0 && (
+            <TrainingLossChart logs={logs} height={350} />
+          )}
+
           {currentStatus === 'not_started' && (
             <Card className="bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800">
               <CardContent className="p-6">
@@ -394,7 +427,7 @@ export default function TuningProgress() {
                         Fine-Tuning Completed Successfully!
                       </h3>
                       <p className="text-success-700 dark:text-success-400 mb-4">
-                        Your model "My-Fine-Tuned-Model" is now ready to use. You can start testing it or download it for offline usage.
+                        Your model "{currentSession?.modelName || 'My-Fine-Tuned-Model'}" is now ready to use. You can start testing it or download it for offline usage.
                       </p>
                       <div className="flex flex-wrap gap-3">
                         <Button variant="outline" leftIcon={<FileDown className="h-4 w-4" />}>
@@ -427,19 +460,27 @@ export default function TuningProgress() {
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div>
                     <p className="text-gray-500 dark:text-gray-400">Base Model</p>
-                    <p className="text-gray-700 dark:text-gray-300">Mistral-7B-v0.1</p>
+                    <p className="text-gray-700 dark:text-gray-300">
+                      {currentSession?.selectedModel?.name || 'No model selected'}
+                    </p>
                   </div>
                   <div>
                     <p className="text-gray-500 dark:text-gray-400">Training Method</p>
-                    <p className="text-gray-700 dark:text-gray-300">LoRA</p>
+                    <p className="text-gray-700 dark:text-gray-300">
+                      {trainingSessionService.getTrainingMethodLabel()}
+                    </p>
                   </div>
                   <div>
                     <p className="text-gray-500 dark:text-gray-400">Epochs</p>
-                    <p className="text-gray-700 dark:text-gray-300">3</p>
+                    <p className="text-gray-700 dark:text-gray-300">
+                      {currentSession?.parameters?.epochs || 'N/A'}
+                    </p>
                   </div>
                   <div>
                     <p className="text-gray-500 dark:text-gray-400">Batch Size</p>
-                    <p className="text-gray-700 dark:text-gray-300">8</p>
+                    <p className="text-gray-700 dark:text-gray-300">
+                      {currentSession?.parameters?.batchSize || 'N/A'}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -449,16 +490,20 @@ export default function TuningProgress() {
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div>
                     <p className="text-gray-500 dark:text-gray-400">Examples</p>
-                    <p className="text-gray-700 dark:text-gray-300">1,024</p>
+                    <p className="text-gray-700 dark:text-gray-300">
+                      {currentSession?.totalExamples?.toLocaleString() || 'N/A'}
+                    </p>
                   </div>
                   <div>
                     <p className="text-gray-500 dark:text-gray-400">Size</p>
-                    <p className="text-gray-700 dark:text-gray-300">2.3 MB</p>
+                    <p className="text-gray-700 dark:text-gray-300">
+                      {currentSession?.totalSize ? trainingSessionService.formatFileSize(currentSession.totalSize) : 'N/A'}
+                    </p>
                   </div>
                   <div className="col-span-2">
                     <p className="text-gray-500 dark:text-gray-400">Split</p>
                     <p className="text-gray-700 dark:text-gray-300">
-                      80% training, 20% validation
+                      {currentSession?.trainValidationSplit ? trainingSessionService.formatTrainValidationSplit(currentSession.trainValidationSplit) : 'N/A'}
                     </p>
                   </div>
                 </div>

@@ -10,6 +10,8 @@ export interface Model {
   creationDate?: string;
   isBase: boolean;
   baseModelId?: string;
+  family?: string;
+  hf_model_id?: string;
 }
 
 export interface ModelStatus {
@@ -105,16 +107,22 @@ class ChatApiService {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  // Helper method to get model path from model name
+  // Helper method to get model path from model name (for fine-tuned models only)
   getModelPath(modelName: string): string {
     const modelData = this.modelsData.find(model => model.name === modelName);
     return modelData?.path || `./results/${modelName}`;
   }
 
-  // Helper method to load model by name
-  async loadModelByName(modelName: string, maxSeqLength: number = 2048): Promise<void> {
-    const modelPath = this.getModelPath(modelName);
-    return this.loadModel(modelPath, maxSeqLength);
+  // Helper method to load model by name or HF model ID
+  async loadModelByName(modelIdentifier: string, maxSeqLength: number = 2048): Promise<void> {
+    // For HF models, use the identifier directly
+    // For local models, get the path
+    return this.loadModel(modelIdentifier, maxSeqLength);
+  }
+
+  // Helper method to load model with proper identifier (HF ID or local path)
+  async loadModelByIdentifier(modelIdentifier: string, maxSeqLength: number = 2048): Promise<void> {
+    return this.loadModel(modelIdentifier, maxSeqLength);
   }
 
   async fetchAvailableModels(): Promise<Model[]> {
@@ -187,6 +195,93 @@ class ChatApiService {
       }
       
       throw new Error(error.message || 'Failed to load available models. Please try again.');
+    }
+  }
+
+  async fetchHuggingFaceModels(): Promise<Model[]> {
+    try {
+      const response = await this.makeRequest('/models/huggingface');
+      const data = await response.json();
+      
+      if (data.status === 'success' && data.models && Array.isArray(data.models)) {
+        const models = data.models;
+        
+        // Transform HF models to match our Model interface
+        return models.map((model: any) => ({
+          id: model.id,
+          name: model.name,
+          description: model.description,
+          size: model.size,
+          architecture: model.architecture,
+          creationDate: new Date().toISOString(),
+          isBase: model.isBase,
+          baseModelId: model.hf_model_id,
+          family: model.family,
+          hf_model_id: model.hf_model_id,
+        }));
+      } else {
+        throw new Error('Invalid response format from Hugging Face models API');
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch Hugging Face models:', error);
+      
+      // Provide helpful error messages based on error type
+      if (error.type === 'cors') {
+        throw new Error('CORS error: Unable to connect to the API. Please check if the server is running and CORS is configured properly.');
+      } else if (error.type === 'network') {
+        throw new Error('Network error: Unable to reach the API server. Please check your internet connection.');
+      } else if (error.type === 'timeout') {
+        throw new Error('Request timeout: The API server is taking too long to respond. Please try again.');
+      } else if (error.type === 'server') {
+        throw new Error('Server error: The API server is experiencing issues. Please try again later.');
+      }
+      
+      throw new Error(error.message || 'Failed to load Hugging Face models. Please try again.');
+    }
+  }
+
+  async searchHuggingFaceModels(query: string, limit: number = 20): Promise<Model[]> {
+    try {
+      const response = await this.makeRequest(`/models/huggingface/search?query=${encodeURIComponent(query)}&limit=${limit}`);
+      const data = await response.json();
+      
+      if (data.status === 'success' && data.models && Array.isArray(data.models)) {
+        const models = data.models;
+        
+        // Transform search results to match our Model interface
+        return models.map((model: any) => ({
+          id: model.id,
+          name: model.name,
+          description: model.description,
+          size: model.size,
+          architecture: model.architecture,
+          creationDate: new Date().toISOString(),
+          isBase: model.isBase,
+          baseModelId: model.hf_model_id,
+          family: model.family,
+          hf_model_id: model.hf_model_id,
+          downloads: model.downloads,
+        }));
+      } else if (data.status === 'error') {
+        throw new Error(data.message || 'Search failed');
+      } else {
+        throw new Error('Invalid response format from Hugging Face search API');
+      }
+    } catch (error: any) {
+      console.error('Failed to search Hugging Face models:', error);
+      
+      // Provide helpful error messages based on error type
+      if (error.type === 'cors') {
+        throw new Error('CORS error: Unable to connect to the API. Please check if the server is running and CORS is configured properly.');
+      } else if (error.type === 'network') {
+        throw new Error('Network error: Unable to reach the API server. Please check your internet connection.');
+      } else if (error.type === 'timeout') {
+        throw new Error('Request timeout: The API server is taking too long to respond. Please try again.');
+      } else if (error.type === 'server') {
+        throw new Error('Server error: The API server is experiencing issues. Please try again later.');
+      }
+      
+      throw new Error(error.message || 'Failed to search Hugging Face models. Please try again.');
     }
   }
 
