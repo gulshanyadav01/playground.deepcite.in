@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowRight, CornerDownLeft, Copy, CheckCheck, MessageSquare, Scale, Send, DownloadCloud, AlertCircle, Loader2 } from 'lucide-react';
+import { ArrowRight, CornerDownLeft, Copy, CheckCheck, MessageSquare, Scale, Send, DownloadCloud, AlertCircle, Loader2, Settings, ChevronDown, ChevronUp } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -40,6 +40,46 @@ export default function ModelQuery() {
   const [maxTokens, setMaxTokens] = useState(256);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [copySuccess, setCopySuccess] = useState<{[key: string]: boolean}>({});
+  
+  // System Prompt state
+  const [systemPrompt, setSystemPrompt] = useState('');
+  const [systemPromptEnabled, setSystemPromptEnabled] = useState(false);
+  const [showSystemPrompt, setShowSystemPrompt] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState('');
+
+  // System Prompt Templates
+  const systemPromptTemplates = [
+    {
+      id: 'default',
+      name: 'Default Assistant',
+      prompt: 'You are a helpful AI assistant. Provide accurate, concise, and helpful responses to user questions.'
+    },
+    {
+      id: 'code_expert',
+      name: 'Code Expert',
+      prompt: 'You are an expert programmer and software engineer. Help users with coding questions, debugging, and best practices. Provide clear explanations and well-commented code examples.'
+    },
+    {
+      id: 'customer_support',
+      name: 'Customer Support',
+      prompt: 'You are a friendly and professional customer support agent. Help customers with their inquiries, provide solutions to problems, and maintain a positive, helpful tone.'
+    },
+    {
+      id: 'creative_writer',
+      name: 'Creative Writer',
+      prompt: 'You are a creative writing assistant. Help users with storytelling, creative writing, character development, and narrative techniques. Be imaginative and inspiring.'
+    },
+    {
+      id: 'technical_analyst',
+      name: 'Technical Analyst',
+      prompt: 'You are a technical analyst and expert in data analysis. Provide detailed technical insights, explain complex concepts clearly, and help with data interpretation.'
+    },
+    {
+      id: 'educator',
+      name: 'Educator',
+      prompt: 'You are an experienced educator and tutor. Explain concepts clearly, provide examples, and adapt your teaching style to help users learn effectively.'
+    }
+  ];
   
   // Get current models list based on active tab
   const currentModels = activeTab === 'finetuned' ? availableModels : huggingFaceModels;
@@ -232,6 +272,25 @@ export default function ModelQuery() {
     loadHuggingFaceModels(); // Reload default models
   };
 
+  // System Prompt handlers
+  const handleTemplateSelect = (templateId: string) => {
+    const template = systemPromptTemplates.find(t => t.id === templateId);
+    if (template) {
+      setSystemPrompt(template.prompt);
+      setSelectedTemplate(templateId);
+      setSystemPromptEnabled(true);
+    }
+  };
+
+  const handleSystemPromptClear = () => {
+    setSystemPrompt('');
+    setSelectedTemplate('');
+  };
+
+  const handleSystemPromptToggle = () => {
+    setSystemPromptEnabled(!systemPromptEnabled);
+  };
+
   // Load available models on component mount
   useEffect(() => {
     loadModels();
@@ -282,13 +341,19 @@ export default function ModelQuery() {
     const messageIndex = messages.length + 1; // +1 because we just added user message
 
     try {
+      // Prepare chat parameters with system prompt if enabled
+      const chatParams = {
+        max_tokens: maxTokens,
+        temperature: temperature,
+        ...(systemPromptEnabled && systemPrompt.trim() && {
+          system_prompt: systemPrompt.trim()
+        })
+      };
+
       // Use streaming chat API
       await chatApi.streamChat(
         prompt,
-        {
-          max_tokens: maxTokens,
-          temperature: temperature,
-        },
+        chatParams,
         // onChunk callback - update message content as chunks arrive
         (chunk: string) => {
           setMessages(prev => 
@@ -658,6 +723,105 @@ export default function ModelQuery() {
                   
                 </div>
               </div>
+
+              {/* System Prompt Section */}
+              <div className="pt-4 border-t">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-medium flex items-center gap-2">
+                    <Settings className="h-4 w-4" />
+                    System Prompt
+                  </h4>
+                  <button
+                    onClick={() => setShowSystemPrompt(!showSystemPrompt)}
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                  >
+                    {showSystemPrompt ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+
+                {showSystemPrompt && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="space-y-3"
+                  >
+                    {/* Enable System Prompt Toggle */}
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="checkbox"
+                        id="systemPromptEnabled"
+                        checked={systemPromptEnabled}
+                        onChange={handleSystemPromptToggle}
+                        className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                      />
+                      <label htmlFor="systemPromptEnabled" className="text-sm">
+                        Enable System Prompt
+                      </label>
+                      {systemPromptEnabled && (
+                        <Badge variant="secondary" size="sm">
+                          Active
+                        </Badge>
+                      )}
+                    </div>
+
+                    {systemPromptEnabled && (
+                      <>
+                        {/* Template Selector */}
+                        <div>
+                          <label className="block text-xs font-medium mb-1">
+                            Quick Templates
+                          </label>
+                          <select
+                            value={selectedTemplate}
+                            onChange={(e) => handleTemplateSelect(e.target.value)}
+                            className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          >
+                            <option value="">Select a template...</option>
+                            {systemPromptTemplates.map((template) => (
+                              <option key={template.id} value={template.id}>
+                                {template.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* System Prompt Textarea */}
+                        <div>
+                          <label className="block text-xs font-medium mb-1">
+                            Custom System Prompt
+                          </label>
+                          <textarea
+                            value={systemPrompt}
+                            onChange={(e) => setSystemPrompt(e.target.value)}
+                            placeholder="Enter your system prompt here..."
+                            rows={4}
+                            className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+                          />
+                          <div className="flex justify-between items-center mt-1">
+                            <span className="text-xs text-gray-500">
+                              {systemPrompt.length} characters
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleSystemPromptClear}
+                              className="text-xs px-2 py-1 h-auto"
+                            >
+                              Clear
+                            </Button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </motion.div>
+                )}
+              </div>
             </CardContent>
             <CardFooter className="border-t flex-col space-y-3 items-start">
               <div className="text-xs text-gray-500 dark:text-gray-400">
@@ -682,14 +846,24 @@ export default function ModelQuery() {
         <div className="lg:col-span-3 h-full flex flex-col">
           <Card className="flex-1 flex flex-col h-full min-h-[600px]">
             <CardHeader className="border-b flex-shrink-0">
-              <div className="flex items-center space-x-3">
-                <MessageSquare className="h-5 w-5 text-primary-500" />
-                <div>
-                  <CardTitle>Model Chat</CardTitle>
-                  <CardDescription>
-                    {showCompare ? 'Compare responses from different models' : 'Test your selected model'}
-                  </CardDescription>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <MessageSquare className="h-5 w-5 text-primary-500" />
+                  <div>
+                    <CardTitle>Model Chat</CardTitle>
+                    <CardDescription>
+                      {showCompare ? 'Compare responses from different models' : 'Test your selected model'}
+                    </CardDescription>
+                  </div>
                 </div>
+                {systemPromptEnabled && systemPrompt.trim() && (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" size="sm" className="flex items-center gap-1">
+                      <Settings className="h-3 w-3" />
+                      System Prompt Active
+                    </Badge>
+                  </div>
+                )}
               </div>
             </CardHeader>
             <CardContent className="flex-1 overflow-y-auto p-4 max-h-[500px] min-h-[400px]">

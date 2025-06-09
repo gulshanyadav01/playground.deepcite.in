@@ -13,8 +13,8 @@ const trainSteps = [
 ];
 
 const evaluateSteps = [
-  { path: '/evaluate/test-data', label: 'Upload Test Data' },
-  { path: '/evaluate/metrics', label: 'View Metrics' },
+  { path: '/evaluate/test-data', label: 'Evaluate Model' },
+  { path: '/evaluate/metrics', label: 'Evaluation Progress' },
   { path: '/evaluate/compare', label: 'Compare Models' },
 ];
 

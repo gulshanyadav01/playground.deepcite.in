@@ -24,6 +24,7 @@ export interface ChatParams {
   message: string;
   max_tokens?: number;
   temperature?: number;
+  system_prompt?: string;
 }
 
 export interface StreamChunk {
@@ -352,13 +353,20 @@ class ChatApiService {
 
   async sendSingleMessage(message: string, params: Partial<ChatParams> = {}): Promise<string> {
     try {
+      const requestPayload: any = {
+        message,
+        max_tokens: params.max_tokens || 256,
+        temperature: params.temperature || 0.7,
+      };
+
+      // Add system prompt if provided
+      if (params.system_prompt && params.system_prompt.trim()) {
+        requestPayload.system_prompt = params.system_prompt.trim();
+      }
+
       const response = await this.makeRequest('/chat/single', {
         method: 'POST',
-        body: JSON.stringify({
-          message,
-          max_tokens: params.max_tokens || 256,
-          temperature: params.temperature || 0.7,
-        }),
+        body: JSON.stringify(requestPayload),
       });
       
       const data = await response.json();
@@ -414,11 +422,16 @@ class ChatApiService {
   ): Promise<void> {
     try {
       // Create request payload matching your API format exactly
-      const requestPayload = {
+      const requestPayload: any = {
         message,
         max_tokens: params.max_tokens || 150,
         temperature: params.temperature || 0.7,
       };
+
+      // Add system prompt if provided
+      if (params.system_prompt && params.system_prompt.trim()) {
+        requestPayload.system_prompt = params.system_prompt.trim();
+      }
 
       console.log('Sending chat request:', requestPayload);
 
