@@ -6,9 +6,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import UserProfile from './UserProfile';
 
 const trainSteps = [
-  { path: '/select-model', label: 'Select Model' },
-  { path: '/upload-data', label: 'Upload Data' },
-  { path: '/configure', label: 'Configure' },
+  { path: '/configure/model', label: 'Select Model' },
+  { path: '/configure/data', label: 'Upload Data' },
+  { path: '/configure/parameters', label: 'Configure Training' },
   { path: '/progress', label: 'Training Progress' },
 ];
 
@@ -20,7 +20,7 @@ const evaluateSteps = [
 
 const navItems = [
   { icon: Home, label: 'Dashboard', path: '/' },
-  { icon: Brain, label: 'Train', path: '/select-model', subItems: trainSteps },
+  { icon: Brain, label: 'Train', path: '/configure', subItems: trainSteps },
   { icon: LineChart, label: 'Evaluate', path: '/evaluate/test-data', subItems: evaluateSteps },
   { icon: MessageSquare, label: 'Chat', path: '/query' },
   { icon: Activity, label: 'Monitor', path: '/monitoring' },
@@ -40,7 +40,7 @@ export function SideNav() {
   // Expand appropriate section based on current path
   useEffect(() => {
     if (isTrainingPath) {
-      setExpandedItem('/select-model');
+      setExpandedItem('/configure');
     } else if (isEvaluationPath) {
       setExpandedItem('/evaluate/test-data');
     }

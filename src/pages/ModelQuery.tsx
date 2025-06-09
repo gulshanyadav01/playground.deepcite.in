@@ -14,7 +14,13 @@ interface ChatMessage {
 }
 
 export default function ModelQuery() {
+  const [activeTab, setActiveTab] = useState<'finetuned' | 'huggingface'>('finetuned');
   const [availableModels, setAvailableModels] = useState<Model[]>([]);
+  const [huggingFaceModels, setHuggingFaceModels] = useState<Model[]>([]);
+  const [searchResults, setSearchResults] = useState<Model[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedModelId, setSelectedModelId] = useState('');
   const [compareModelId, setCompareModelId] = useState('');
   const [inputValue, setInputValue] = useState('');
@@ -22,7 +28,9 @@ export default function ModelQuery() {
   const [showCompare, setShowCompare] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(true);
+  const [isLoadingHFModels, setIsLoadingHFModels] = useState(true);
   const [modelError, setModelError] = useState<string | null>(null);
+  const [hfModelError, setHFModelError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [currentLoadedModel, setCurrentLoadedModel] = useState<string | null>(null);
   const [isLoadingModel, setIsLoadingModel] = useState(false);
@@ -33,9 +41,12 @@ export default function ModelQuery() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [copySuccess, setCopySuccess] = useState<{[key: string]: boolean}>({});
   
+  // Get current models list based on active tab
+  const currentModels = activeTab === 'finetuned' ? availableModels : huggingFaceModels;
+  
   // Get selected model info
-  const selectedModel = availableModels.find((m: Model) => m.id === selectedModelId);
-  const compareModel = availableModels.find((m: Model) => m.id === compareModelId);
+  const selectedModel = currentModels.find((m: Model) => m.id === selectedModelId);
+  const compareModel = currentModels.find((m: Model) => m.id === compareModelId);
   
   // Load available models function
   const loadModels = async () => {
@@ -107,20 +118,118 @@ export default function ModelQuery() {
     setModelLoadSuccess(false);
   };
 
-  // Handle manual model loading
-  const handleLoadModel = () => {
-    const selectedModel = availableModels.find(m => m.id === selectedModelId);
-    if (selectedModel) {
-      loadSelectedModel(selectedModel.name);
+  // Load Hugging Face models function
+  const loadHuggingFaceModels = async () => {
+    try {
+      setIsLoadingHFModels(true);
+      setHFModelError(null);
+      const models = await chatApi.fetchHuggingFaceModels();
+      setHuggingFaceModels(models);
+      
+      // Set default selected models if switching to HF tab
+      if (activeTab === 'huggingface' && models.length > 0) {
+        setSelectedModelId(models[0].id);
+        if (models.length > 1) {
+          setCompareModelId(models[1].id);
+        }
+      }
+    } catch (error: any) {
+      console.error('Failed to load Hugging Face models:', error);
+      setHFModelError(error.message || 'Failed to load Hugging Face models. Please try again.');
+    } finally {
+      setIsLoadingHFModels(false);
     }
   };
 
-  // Handle force reload
-  const handleForceReload = () => {
-    const selectedModel = availableModels.find(m => m.id === selectedModelId);
-    if (selectedModel) {
-      loadSelectedModel(selectedModel.name, true);
+  // Handle tab change
+  const handleTabChange = (tab: 'finetuned' | 'huggingface') => {
+    setActiveTab(tab);
+    setSelectedModelId('');
+    setCompareModelId('');
+    setModelLoadError(null);
+    setModelLoadSuccess(false);
+    
+    // Load models for the selected tab if not already loaded
+    if (tab === 'huggingface' && huggingFaceModels.length === 0) {
+      loadHuggingFaceModels();
     }
+    
+    // Set default selected model for the tab
+    const models = tab === 'finetuned' ? availableModels : huggingFaceModels;
+    if (models.length > 0) {
+      setSelectedModelId(models[0].id);
+      if (models.length > 1) {
+        setCompareModelId(models[1].id);
+      }
+    }
+  };
+
+  // Handle manual model loading (updated for both types)
+  const handleLoadModel = () => {
+    const selectedModel = currentModels.find(m => m.id === selectedModelId);
+    if (selectedModel) {
+      // For HF models, use the hf_model_id directly (e.g., "Qwen/Qwen2.5-0.5B-Instruct")
+      // For fine-tuned models, construct the full path (e.g., "./results/model_name")
+      const modelIdentifier = activeTab === 'huggingface' 
+        ? selectedModel.hf_model_id || selectedModel.name  // Use HF model ID directly
+        : chatApi.getModelPath(selectedModel.name);  // Use chatApi to get full local path
+      
+      console.log(`Loading ${activeTab} model:`, modelIdentifier);
+      loadSelectedModel(modelIdentifier);
+    }
+  };
+
+  // Handle force reload (updated for both types)
+  const handleForceReload = () => {
+    const selectedModel = currentModels.find(m => m.id === selectedModelId);
+    if (selectedModel) {
+      const modelIdentifier = activeTab === 'huggingface' 
+        ? selectedModel.hf_model_id || selectedModel.name  // Use HF model ID directly
+        : chatApi.getModelPath(selectedModel.name);  // Use chatApi to get full local path
+      
+      console.log(`Force reloading ${activeTab} model:`, modelIdentifier);
+      loadSelectedModel(modelIdentifier, true);
+    }
+  };
+
+  // Handle search for Hugging Face models
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+    
+    try {
+      setIsSearching(true);
+      setSearchError(null);
+      const results = await chatApi.searchHuggingFaceModels(searchQuery.trim());
+      setSearchResults(results);
+      
+      // Update the current models list to show search results
+      setHuggingFaceModels(results);
+      
+      // Set default selected model from search results
+      if (results.length > 0) {
+        setSelectedModelId(results[0].id);
+        if (results.length > 1) {
+          setCompareModelId(results[1].id);
+        }
+      } else {
+        setSelectedModelId('');
+        setCompareModelId('');
+      }
+    } catch (error: any) {
+      console.error('Failed to search Hugging Face models:', error);
+      setSearchError(error.message || 'Search failed. Please try again.');
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Clear search and return to default models
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setSearchError(null);
+    loadHuggingFaceModels(); // Reload default models
   };
 
   // Load available models on component mount
@@ -154,7 +263,7 @@ export default function ModelQuery() {
   };
 
   const generateResponse = async (modelId: string, prompt: string, delay = 0) => {
-    const model = availableModels.find(m => m.id === modelId);
+    const model = currentModels.find(m => m.id === modelId);
     if (!model) return;
 
     // Add delay for comparison model
@@ -252,27 +361,104 @@ export default function ModelQuery() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {isLoadingModels ? (
+              {/* Tab Interface */}
+              <div className="flex space-x-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+                <button
+                  onClick={() => handleTabChange('finetuned')}
+                  className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                    activeTab === 'finetuned'
+                      ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                  }`}
+                >
+                  Fine-tuned Models
+                </button>
+                <button
+                  onClick={() => handleTabChange('huggingface')}
+                  className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                    activeTab === 'huggingface'
+                      ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                  }`}
+                >
+                  🤗 Hugging Face
+                </button>
+              </div>
+
+              {/* Loading and Error States */}
+              {(activeTab === 'finetuned' ? isLoadingModels : isLoadingHFModels) ? (
                 <div className="flex items-center justify-center py-8">
-                  <AnimatedLoader variant="brain" size="md" text="Loading models..." />
+                  <AnimatedLoader variant="brain" size="md" text={`Loading ${activeTab === 'finetuned' ? 'fine-tuned' : 'Hugging Face'} models...`} />
                 </div>
-              ) : modelError ? (
+              ) : (activeTab === 'finetuned' ? modelError : hfModelError) ? (
                 <div className="flex flex-col items-center justify-center py-8 space-y-3">
                   <div className="flex items-center">
                     <AlertCircle className="h-6 w-6 text-red-500" />
-                    <span className="ml-2 text-sm text-red-600">{modelError}</span>
+                    <span className="ml-2 text-sm text-red-600">{activeTab === 'finetuned' ? modelError : hfModelError}</span>
                   </div>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={handleRetryLoadModels}
-                    disabled={isLoadingModels}
+                    onClick={activeTab === 'finetuned' ? handleRetryLoadModels : loadHuggingFaceModels}
+                    disabled={activeTab === 'finetuned' ? isLoadingModels : isLoadingHFModels}
                   >
                     Try Again
                   </Button>
                 </div>
               ) : (
                 <>
+                  {/* Search Interface for Hugging Face Tab */}
+                  {activeTab === 'huggingface' && (
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium mb-2">
+                        🔍 Search Models
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleSearch();
+                            }
+                          }}
+                          placeholder="Search for models (e.g., llama, microsoft, phi)..."
+                          className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          disabled={isSearching}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleSearch}
+                          disabled={isSearching || !searchQuery.trim()}
+                          className="absolute right-1 top-1 h-6 w-6 p-0"
+                        >
+                          {isSearching ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <ArrowRight className="h-3 w-3" />
+                          )}
+                        </Button>
+                      </div>
+                      
+                      {/* Search Error */}
+                      {searchError && (
+                        <div className="mt-2 flex items-center text-sm text-red-600">
+                          <AlertCircle className="h-4 w-4 mr-2" />
+                          {searchError}
+                        </div>
+                      )}
+                      
+                      {/* Search Results Info */}
+                      {searchResults.length > 0 && (
+                        <div className="mt-2 text-xs text-gray-500">
+                          Found {searchResults.length} verified models for "{searchQuery}"
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div>
                     <label className="block text-sm font-medium mb-1">
                       Primary Model
@@ -281,14 +467,15 @@ export default function ModelQuery() {
                       value={selectedModelId}
                       onChange={(e) => handleModelSelection(e.target.value)}
                       className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                      disabled={availableModels.length === 0 || isLoadingModel}
+                      disabled={currentModels.length === 0 || isLoadingModel}
                     >
-                      {availableModels.length === 0 ? (
+                      {currentModels.length === 0 ? (
                         <option value="">No models available</option>
                       ) : (
-                        availableModels.map((model) => (
+                        currentModels.map((model) => (
                           <option key={model.id} value={model.id}>
                             {model.name}
+                            {activeTab === 'huggingface' && model.family && ` (${model.family})`}
                           </option>
                         ))
                       )}
@@ -411,11 +598,12 @@ export default function ModelQuery() {
                       onChange={(e) => setCompareModelId(e.target.value)}
                       className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                     >
-                      {availableModels
+                      {currentModels
                         .filter((model) => model.id !== selectedModelId)
                         .map((model) => (
                           <option key={model.id} value={model.id}>
                             {model.name}
+                            {activeTab === 'huggingface' && model.family && ` (${model.family})`}
                           </option>
                         ))}
                     </select>
@@ -492,8 +680,8 @@ export default function ModelQuery() {
         </div>
         
         <div className="lg:col-span-3 h-full flex flex-col">
-          <Card className="flex-1 flex flex-col h-full">
-            <CardHeader className="border-b">
+          <Card className="flex-1 flex flex-col h-full min-h-[600px]">
+            <CardHeader className="border-b flex-shrink-0">
               <div className="flex items-center space-x-3">
                 <MessageSquare className="h-5 w-5 text-primary-500" />
                 <div>
@@ -504,7 +692,7 @@ export default function ModelQuery() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="flex-1 overflow-y-auto p-4">
+            <CardContent className="flex-1 overflow-y-auto p-4 max-h-[500px] min-h-[400px]">
               <div className="space-y-6">
                 {messages.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center p-8">
