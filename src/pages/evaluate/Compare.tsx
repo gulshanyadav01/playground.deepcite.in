@@ -2,20 +2,29 @@ import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
-import { ArrowUpRight, Download, FileText } from 'lucide-react';
+import { ArrowUpRight, Download, FileText, AlertTriangle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ModelInfo } from '../../components/models/ModelCard';
+import { evaluationService } from '../../services/evaluationService';
 
 export default function Compare() {
   const [selectedMetric, setSelectedMetric] = useState('accuracy');
   const [comparisonData, setComparisonData] = useState<any>(null);
   const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null);
+  const [evaluationJobId, setEvaluationJobId] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
     const modelData = localStorage.getItem('evaluationModel');
     if (modelData) {
       const model = JSON.parse(modelData);
       setSelectedModel(model);
+    }
+    
+    const jobId = localStorage.getItem('evaluationJobId');
+    if (jobId) {
+      setEvaluationJobId(jobId);
     }
   }, []);
 
@@ -53,6 +62,44 @@ export default function Compare() {
       });
     }, 1000);
   }, []);
+
+  const handleDownloadJSON = async () => {
+    if (!evaluationJobId) {
+      setDownloadError('No evaluation job ID found. Please run an evaluation first.');
+      return;
+    }
+
+    setIsDownloading(true);
+    setDownloadError(null);
+
+    try {
+      const filename = `comparison_results_${selectedModel?.name || 'model'}_${new Date().toISOString().split('T')[0]}.json`;
+      await evaluationService.downloadResults(evaluationJobId, filename);
+    } catch (error: any) {
+      setDownloadError(error.message || 'Failed to download results');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const handleDownloadCSV = async () => {
+    if (!evaluationJobId) {
+      setDownloadError('No evaluation job ID found. Please run an evaluation first.');
+      return;
+    }
+
+    setIsDownloading(true);
+    setDownloadError(null);
+
+    try {
+      const filename = `comparison_results_${selectedModel?.name || 'model'}_${new Date().toISOString().split('T')[0]}.csv`;
+      await evaluationService.downloadResultsAsCSV(evaluationJobId, filename);
+    } catch (error: any) {
+      setDownloadError(error.message || 'Failed to download results');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const metrics = [
     { key: 'accuracy', label: 'Accuracy' },
@@ -182,20 +229,41 @@ export default function Compare() {
                       </table>
                     </div>
 
+                    {downloadError && (
+                      <div className="p-3 bg-error-50 dark:bg-error-900/20 rounded-lg border border-error-200 dark:border-error-800 mb-4">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className="h-4 w-4 text-error-500 flex-shrink-0 mt-0.5" />
+                          <p className="text-sm text-error-700 dark:text-error-300">{downloadError}</p>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex justify-end gap-3">
                       <Button
                         variant="outline"
-                        leftIcon={<FileText className="h-4 w-4" />}
+                        leftIcon={<Download className="h-4 w-4" />}
+                        onClick={handleDownloadJSON}
+                        disabled={isDownloading || !evaluationJobId}
+                        isLoading={isDownloading}
                       >
-                        View Full Report
+                        {isDownloading ? 'Downloading...' : 'Download JSON'}
                       </Button>
                       <Button
                         variant="outline"
-                        leftIcon={<Download className="h-4 w-4" />}
+                        leftIcon={<FileText className="h-4 w-4" />}
+                        onClick={handleDownloadCSV}
+                        disabled={isDownloading || !evaluationJobId}
+                        isLoading={isDownloading}
                       >
-                        Export Results
+                        {isDownloading ? 'Downloading...' : 'Download CSV'}
                       </Button>
                     </div>
+                    
+                    {!evaluationJobId && (
+                      <div className="text-xs text-warning-600 dark:text-warning-400 text-center mt-2">
+                        ⚠️ No evaluation job found. Please run an evaluation first to download results.
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>

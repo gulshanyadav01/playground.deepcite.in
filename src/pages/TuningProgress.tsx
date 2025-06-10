@@ -223,7 +223,7 @@ export default function TuningProgress() {
         setCurrentStatus('completed');
         setTimeRemaining(0);
       }
-    }, 2000);
+    }, 1000); // Reduced from 2000ms to 1000ms for more responsive updates
 
     return () => clearInterval(interval);
   }, [isPaused, currentStatus]);

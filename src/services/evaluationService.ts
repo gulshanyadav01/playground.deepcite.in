@@ -18,6 +18,9 @@ export interface EvaluationProgress {
   completed_rows: number;
   total_rows: number;
   progress_percentage: number;
+  estimated_completion_time?: number;
+  avg_time_per_example?: number;
+  processing_speed?: number;
 }
 
 export interface EvaluationResult {
