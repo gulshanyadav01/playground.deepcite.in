@@ -52,6 +52,7 @@ export default function ConfigureParameters() {
         maxSequenceLength: 2048,
         modelName: 'My-Fine-Tuned-Model',
         cutoff: 0.8,
+        loggingSteps: 10,
       }
     });
     dispatch({ 
@@ -166,7 +167,7 @@ export default function ConfigureParameters() {
       learning_rate: parameters.learningRate,
       warmup_steps: trainingConfig.warmup_steps,
       save_steps: trainingConfig.save_steps,
-      logging_steps: trainingConfig.logging_steps,
+      logging_steps: parameters.loggingSteps,
       output_dir: `./results/${parameters.modelName}`,
       
       // LoRA Configuration
@@ -441,6 +442,46 @@ export default function ConfigureParameters() {
                     <span>128</span>
                     <span>1024</span>
                     <span>2048</span>
+                  </div>
+                </div>
+                
+                {/* Logging Steps */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="loggingSteps" className="block text-sm font-medium">
+                      Logging Steps
+                    </label>
+                    <Tooltip content="How often to log training metrics. Lower values provide more frequent updates but may slow training slightly.">
+                      <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
+                    </Tooltip>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="range"
+                      id="loggingSteps"
+                      min="1"
+                      max="100"
+                      step="1"
+                      value={parameters.loggingSteps}
+                      onChange={(e) => handleParameterChange('loggingSteps', parseInt(e.target.value))}
+                      className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
+                    />
+                    <div className="w-16">
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        step="1"
+                        value={parameters.loggingSteps}
+                        onChange={(e) => handleParameterChange('loggingSteps', parseInt(e.target.value) || 1)}
+                        className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>1</span>
+                    <span>50</span>
+                    <span>100</span>
                   </div>
                 </div>
                 
@@ -1359,6 +1400,10 @@ export default function ConfigureParameters() {
                   <div>
                     <p className="text-gray-500 dark:text-gray-400">Max Sequence</p>
                     <p className="text-gray-700 dark:text-gray-300">{parameters.maxSequenceLength}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 dark:text-gray-400">Logging Steps</p>
+                    <p className="text-gray-700 dark:text-gray-300">{parameters.loggingSteps}</p>
                   </div>
                 </div>
               </div>

@@ -94,16 +94,35 @@ export default function TrainingLossChart({ logs, height = 400 }: TrainingLossCh
     // Debug: Log what we're working with
     console.log('TrainingLossChart received logs:', logs.length);
     
-    // Extract training loss data from metrics logs
-    const trainingSteps = logs
+    // Extract training loss data from both metrics and training_step logs
+    const metricsSteps = logs
       .filter(log => log.type === 'metrics' && log.metrics?.loss !== undefined && log.step !== undefined)
       .map(log => ({
         timestamp: new Date(log.timestamp).getTime(),
         step: log.step!,
         loss: log.metrics!.loss as number,
         type: 'training' as const
-      }))
-      .sort((a, b) => a.step - b.step);
+      }));
+
+    const trainingStepLogs = logs
+      .filter(log => log.type === 'training_step' && log.loss !== undefined && log.step !== undefined)
+      .map(log => ({
+        timestamp: new Date(log.timestamp).getTime(),
+        step: log.step!,
+        loss: log.loss!,
+        type: 'training' as const
+      }));
+
+    // Combine and deduplicate by step (prefer metrics logs if both exist for same step)
+    const stepToLossMap = new Map<number, { timestamp: number; step: number; loss: number; type: 'training' }>();
+    
+    // Add training_step logs first
+    trainingStepLogs.forEach(log => stepToLossMap.set(log.step, log));
+    
+    // Add metrics logs (will override training_step logs for same step)
+    metricsSteps.forEach(log => stepToLossMap.set(log.step, log));
+    
+    const trainingSteps = Array.from(stepToLossMap.values()).sort((a, b) => a.step - b.step);
     
     // Debug: Log filtered training steps
     console.log('TrainingLossChart filtered training steps:', trainingSteps.length);

@@ -26,6 +26,7 @@ interface ConfigureState {
     maxSequenceLength: number;
     modelName: string;
     cutoff: number;
+    loggingSteps: number;
   };
   trainingConfig: TrainingConfig;
   
@@ -60,6 +61,7 @@ const initialState: ConfigureState = {
     maxSequenceLength: 2048,
     modelName: 'My-Fine-Tuned-Model',
     cutoff: 0.8,
+    loggingSteps: 10,
   },
   trainingConfig: createTrainingConfig({}),
   completedSteps: new Set(),

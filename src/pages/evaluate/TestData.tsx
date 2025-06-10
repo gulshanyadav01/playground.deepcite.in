@@ -442,7 +442,7 @@ export default function TestData() {
                 </>
               )}
               
-              <div className="flex items-center space-x-3 pt-1">
+              {/* <div className="flex items-center space-x-3 pt-1">
                 <input
                   type="checkbox"
                   id="compareMode"
@@ -453,7 +453,7 @@ export default function TestData() {
                 <label htmlFor="compareMode" className="text-sm">
                   Compare with base model
                 </label>
-              </div>
+              </div> */}
 
               <div className="pt-4">
                 <h4 className="text-sm font-medium mb-3">Parameters</h4>

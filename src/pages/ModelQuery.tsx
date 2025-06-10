@@ -634,7 +634,7 @@ export default function ModelQuery() {
                 </>
               )}
               
-              <div className="flex items-center space-x-3 pt-1">
+              {/* <div className="flex items-center space-x-3 pt-1">
                 <input
                   type="checkbox"
                   id="compareMode"
@@ -645,7 +645,7 @@ export default function ModelQuery() {
                 <label htmlFor="compareMode" className="text-sm">
                   Compare with base model
                 </label>
-              </div>
+              </div> */}
               
               {showCompare && (
                 <motion.div

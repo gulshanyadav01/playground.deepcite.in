@@ -15,7 +15,7 @@ const trainSteps = [
 const evaluateSteps = [
   { path: '/evaluate/test-data', label: 'Evaluate Model' },
   { path: '/evaluate/metrics', label: 'Evaluation Progress' },
-  { path: '/evaluate/compare', label: 'Compare Models' },
+  // { path: '/evaluate/compare', label: 'Compare Models' },
 ];
 
 const navItems = [

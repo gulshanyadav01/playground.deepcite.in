@@ -360,7 +360,7 @@ export default function Metrics() {
               animate={{ opacity: 1, y: 0 }}
               className="space-y-6"
             >
-              <Card>
+              {/* <Card>
                 <CardHeader>
                   <CardTitle>Performance Metrics</CardTitle>
                   <CardDescription>
@@ -387,7 +387,7 @@ export default function Metrics() {
                     </div>
                   </div>
                 </CardContent>
-              </Card>
+              </Card> */}
 
               <Card>
                 <CardHeader>
@@ -491,20 +491,20 @@ export default function Metrics() {
               </Card>
 
               <div className="flex justify-end">
-                <Button
+                {/* <Button
                   variant="primary"
                   rightIcon={<ArrowRight className="h-4 w-4" />}
                   onClick={() => navigate('/evaluate/compare')}
                 >
                   Compare with Base Model
-                </Button>
+                </Button> */}
               </div>
             </motion.div>
           )}
         </div>
 
         <div>
-          <Card>
+          {/* <Card>
             <CardHeader>
               <CardTitle>Evaluation Guide</CardTitle>
               <CardDescription>
@@ -582,7 +582,7 @@ export default function Metrics() {
                 </div>
               </div>
             </CardContent>
-          </Card>
+          </Card> */}
         </div>
       </div>
     </div>
