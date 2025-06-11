@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card'; 
 import { Button } from '../components/ui/Button';
 import { Progress } from '../components/ui/Progress';
 import { Badge } from '../components/ui/Badge';
-import { Timer, CheckCircle2, ChevronDown, Play, Pause, FileDown, ArrowUpRight, Share2, Copy } from 'lucide-react';
+import { Timer, CheckCircle2, ChevronDown, Play, Pause, FileDown, ArrowUpRight, Share2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TrainingLossChart from '../components/training/TrainingLossChart';
-import trainingSessionService from '../services/trainingSessionService';
 
 interface LogEntry {
   timestamp: string;
@@ -32,25 +31,61 @@ interface LogEntry {
   config?: Record<string, unknown>;
 }
 
-type TrainingStatus = 'not_started' | 'initializing' | 'training' | 'validating' | 'finalizing' | 'completed';
+interface TrainingSessionData {
+  session_id: string;
+  status: string;
+  config: Record<string, any>;
+  dataset_info: Record<string, any>;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  progress?: Record<string, any>;
+  logs: LogEntry[];
+  error?: string;
+}
 
-export default function TuningProgress() {
+export default function TrainingSession() {
+  const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  const [currentStatus, setCurrentStatus] = useState<TrainingStatus>('not_started');
-  const [progress, setProgress] = useState(0);
+  
+  const [sessionData, setSessionData] = useState<TrainingSessionData | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
-  const [timeElapsed, setTimeElapsed] = useState(0);
-  const [timeRemaining, setTimeRemaining] = useState(1800); // 30 minutes in seconds
   const [showDetails, setShowDetails] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [timeElapsed, setTimeElapsed] = useState(0);
+  const [timeRemaining, setTimeRemaining] = useState(0);
 
-  // Get current training session
-  const currentSession = trainingSessionService.getCurrentSession();
+  // Function to fetch session data from the API
+  const fetchSessionData = async (): Promise<void> => {
+    if (!sessionId) return;
+    
+    try {
+      const response = await fetch(`https://finetune_engine.deepcite.in/api/training/${sessionId}/status`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          setError('Training session not found');
+          return;
+        }
+        throw new Error(`Error fetching session data: ${response.statusText}`);
+      }
+      const data = await response.json();
+      setSessionData(data);
+      setError(null);
+    } catch (error) {
+      console.error('Failed to fetch session data:', error);
+      setError('Failed to load training session data');
+    }
+  };
 
   // Function to fetch logs from the API
   const fetchLogsFromAPI = async (): Promise<LogEntry[]> => {
+    if (!sessionId) return [];
+    
     try {
-      const response = await fetch('https://finetune_engine.deepcite.in/api/logs');
+      const response = await fetch(`https://finetune_engine.deepcite.in/api/training/${sessionId}/logs`);
       if (!response.ok) {
         throw new Error(`Error fetching logs: ${response.statusText}`);
       }
@@ -58,7 +93,7 @@ export default function TuningProgress() {
       return data.logs || [];
     } catch (error) {
       console.error('Failed to fetch logs:', error);
-      return [] as LogEntry[];
+      return [];
     }
   };
 
@@ -151,7 +186,7 @@ export default function TuningProgress() {
       .pop();
     
     const currentEpoch = latestTrainingStep?.epoch || 0;
-    const totalEpochs = latestEpochBegin?.total_epochs || 3;
+    const totalEpochs = latestEpochBegin?.total_epochs || sessionData?.config?.num_train_epochs || 3;
     
     return {
       current: Math.floor(currentEpoch),
@@ -160,73 +195,59 @@ export default function TuningProgress() {
     };
   };
 
+  // Function to copy URL to clipboard
+  const copyTrainingUrl = async () => {
+    const url = window.location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+      alert('Training URL copied to clipboard!');
+    } catch (err) {
+      console.error('Failed to copy URL:', err);
+    }
+  };
+
+  // Calculate elapsed time
   useEffect(() => {
-    if (isPaused || currentStatus === 'completed') return;
+    if (sessionData?.started_at && sessionData.status !== 'completed') {
+      const startTime = new Date(sessionData.started_at).getTime();
+      const interval = setInterval(() => {
+        const now = new Date().getTime();
+        const elapsed = Math.floor((now - startTime) / 1000);
+        setTimeElapsed(elapsed);
+      }, 1000);
+
+      return () => clearInterval(interval);
+    }
+  }, [sessionData?.started_at, sessionData?.status]);
+
+  // Main data fetching effect
+  useEffect(() => {
+    if (!sessionId) {
+      setError('No session ID provided');
+      setLoading(false);
+      return;
+    }
+
+    // Initial fetch
+    fetchSessionData().then(() => setLoading(false));
+
+    if (isPaused) return;
 
     const interval = setInterval(async () => {
+      await fetchSessionData();
       const fetchedLogs = await fetchLogsFromAPI();
       setLogs(fetchedLogs);
       
-      // Debug: Log the fetched data to console
-      console.log('Fetched logs:', fetchedLogs.length, 'entries');
-      
-      // Debug: Check for metrics logs specifically
-      const metricsLogs = fetchedLogs.filter(log => log.type === 'metrics');
-      console.log('Metrics logs found:', metricsLogs.length);
-      if (metricsLogs.length > 0) {
-        console.log('Latest metrics log:', metricsLogs[metricsLogs.length - 1]);
-      }
-      
-      // Debug: Check for training_step logs
-      const trainingStepLogs = fetchedLogs.filter(log => log.type === 'training_step');
-      console.log('Training step logs found:', trainingStepLogs.length);
-      if (trainingStepLogs.length > 0) {
-        console.log('Latest training step log:', trainingStepLogs[trainingStepLogs.length - 1]);
-      }
-      
-      // Check if any training logs exist to determine if training has started
-      const hasTrainingLogs = fetchedLogs.length > 0 && 
-        fetchedLogs.some(log => ['training_step', 'epoch_begin', 'epoch_end'].includes(log.type));
-      
-      if (!hasTrainingLogs) {
-        // No training has started yet
-        setCurrentStatus('not_started');
-        setProgress(0);
-        setTimeElapsed(0);
-        setTimeRemaining(0);
-        return;
-      }
-
-      // Training has started, increment time and update progress
-      setTimeElapsed(prev => prev + 2);
-      
-      // Get actual progress from training_step logs
+      // Update progress and time estimates
       const currentProgress = getProgressFromLogs(fetchedLogs);
       setProgress(currentProgress);
 
-      // Calculate estimated remaining time from logs
       const estimatedRemaining = calculateEstimatedRemainingTime(fetchedLogs);
       setTimeRemaining(estimatedRemaining);
-
-      // Update status based on progress
-      if (currentProgress === 0) {
-        setCurrentStatus('initializing');
-      } else if (currentProgress < 10) {
-        setCurrentStatus('initializing');
-      } else if (currentProgress < 80) {
-        setCurrentStatus('training');
-      } else if (currentProgress < 90) {
-        setCurrentStatus('validating');
-      } else if (currentProgress < 100) {
-        setCurrentStatus('finalizing');
-      } else {
-        setCurrentStatus('completed');
-        setTimeRemaining(0);
-      }
-    }, 1000); // Reduced from 2000ms to 1000ms for more responsive updates
+    }, 3000); // Update every 3 seconds
 
     return () => clearInterval(interval);
-  }, [isPaused, currentStatus]);
+  }, [sessionId, isPaused]);
 
   // Helper to format time (seconds to hr:mm:ss)
   const formatTime = (timeInSeconds: number) => {
@@ -236,22 +257,24 @@ export default function TuningProgress() {
     return `${hours}:${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   };
 
-  const getStatusVariant = (status: TrainingStatus): 'primary' | 'secondary' | 'success' => {
+  const getStatusVariant = (status: string): 'primary' | 'secondary' | 'success' | 'error' => {
     switch (status) {
       case 'completed':
         return 'success';
       case 'training':
       case 'validating':
         return 'primary';
+      case 'failed':
+        return 'error';
       default:
         return 'secondary';
     }
   };
 
-  const getStatusLabel = (status: TrainingStatus): string => {
+  const getStatusLabel = (status: string): string => {
     switch (status) {
-      case 'not_started':
-        return 'Not Started';
+      case 'queued':
+        return 'Queued';
       case 'initializing':
         return 'Initializing';
       case 'training':
@@ -262,18 +285,75 @@ export default function TuningProgress() {
         return 'Finalizing';
       case 'completed':
         return 'Completed';
+      case 'failed':
+        return 'Failed';
       default:
         return 'Unknown';
     }
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Loading training session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="bg-red-100 dark:bg-red-900/20 rounded-full p-3 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+            <CheckCircle2 className="h-8 w-8 text-red-600 dark:text-red-400" />
+          </div>
+          <h3 className="font-semibold text-lg text-red-800 dark:text-red-300 mb-2">
+            Error Loading Session
+          </h3>
+          <p className="text-red-700 dark:text-red-400 mb-4">{error}</p>
+          <Button variant="outline" onClick={() => navigate('/progress')}>
+            Back to Training Progress
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!sessionData) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <p className="text-gray-600 dark:text-gray-400">No session data available</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold tracking-tight">Fine-Tuning Progress</h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">
-          Monitor your model training in real-time
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">Training Session</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">
+            Session ID: {sessionId}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={copyTrainingUrl}
+            leftIcon={<Share2 className="h-4 w-4" />}
+          >
+            Share Session
+          </Button>
+          <Badge variant={getStatusVariant(sessionData.status)}>
+            {getStatusLabel(sessionData.status)}
+          </Badge>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -281,17 +361,13 @@ export default function TuningProgress() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle>Fine-Tuning Status</CardTitle>
-                <Badge variant={getStatusVariant(currentStatus)}>
-                  {getStatusLabel(currentStatus)}
+                <CardTitle>Training Progress</CardTitle>
+                <Badge variant={getStatusVariant(sessionData.status)}>
+                  {getStatusLabel(sessionData.status)}
                 </Badge>
               </div>
               <CardDescription>
-                {currentStatus === 'not_started'
-                  ? 'No training job is currently active. Start a fine-tuning job to see progress here.'
-                  : currentStatus === 'completed'
-                  ? 'Your model has been successfully fine-tuned and is ready for use'
-                  : 'Your model is currently being fine-tuned'}
+                Real-time monitoring of your model training session
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -299,7 +375,7 @@ export default function TuningProgress() {
                 value={progress}
                 size="lg"
                 variant={
-                  currentStatus === 'completed' ? 'success' :
+                  sessionData.status === 'completed' ? 'success' :
                   progress >= 80 ? 'warning' :
                   progress >= 40 ? 'secondary' :
                   'primary'
@@ -315,15 +391,11 @@ export default function TuningProgress() {
                   </span>
                 </div>
 
-                {currentStatus === 'not_started' ? (
-                  <div className="text-gray-500 dark:text-gray-400">
-                    Waiting for training to start...
-                  </div>
-                ) : timeRemaining > 0 ? (
+                {timeRemaining > 0 ? (
                   <div className="text-gray-700 dark:text-gray-300">
                     Estimated remaining: <span className="font-medium">{formatTime(timeRemaining)}</span>
                   </div>
-                ) : currentStatus === 'completed' ? (
+                ) : sessionData.status === 'completed' ? (
                   <div className="flex items-center gap-1.5 text-success-600 dark:text-success-400">
                     <CheckCircle2 className="h-4 w-4" />
                     <span className="font-medium">Completed</span>
@@ -353,12 +425,12 @@ export default function TuningProgress() {
                         {logs.map((log: LogEntry, index: number) => (
                           <div key={index} className="py-1">
                             <span className="text-gray-500 dark:text-gray-400">
-                              {`[${formatTime(index * 2)}]`}
+                              {`[${new Date(log.timestamp).toLocaleTimeString()}]`}
                             </span>{' '}
                             <span>{log.message}</span>
                           </div>
                         ))}
-                        {currentStatus !== 'completed' && !isPaused && logs.length > 0 && (
+                        {sessionData.status !== 'completed' && !isPaused && logs.length > 0 && (
                           <div className="py-1 animate-pulse">
                             <span className="text-gray-500 dark:text-gray-400">[{formatTime(timeElapsed)}]</span>{' '}
                             <span>_</span>
@@ -370,86 +442,26 @@ export default function TuningProgress() {
                 </AnimatePresence>
               </div>
 
-              {currentStatus !== 'completed' && currentStatus !== 'not_started' && (
+              {sessionData.status !== 'completed' && sessionData.status !== 'failed' && (
                 <div className="flex justify-center pt-2">
                   <Button
                     variant={isPaused ? 'primary' : 'outline'}
                     onClick={() => setIsPaused(!isPaused)}
                     leftIcon={isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
                   >
-                    {isPaused ? 'Resume Training' : 'Pause Training'}
+                    {isPaused ? 'Resume Monitoring' : 'Pause Monitoring'}
                   </Button>
-                </div>
-              )}
-
-              {/* Show unique training URL when session is active */}
-              {currentSession && currentStatus !== 'not_started' && (
-                <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h4 className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-1">
-                          Unique Training URL
-                        </h4>
-                        <p className="text-xs text-blue-700 dark:text-blue-400 mb-3">
-                          Share this URL to let others track this training session in real-time
-                        </p>
-                        <div className="bg-white dark:bg-gray-800 rounded border border-blue-200 dark:border-blue-700 p-2 font-mono text-xs break-all">
-                          {trainingSessionService.getShareableUrl()}
-                        </div>
-                      </div>
-                      <div className="flex gap-2 ml-4">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => navigator.clipboard.writeText(trainingSessionService.getShareableUrl())}
-                          leftIcon={<Copy className="h-3 w-3" />}
-                        >
-                          Copy
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => navigate(trainingSessionService.getTrainingUrl())}
-                          leftIcon={<Share2 className="h-3 w-3" />}
-                        >
-                          View
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               )}
             </CardContent>
           </Card>
 
           {/* Training Loss Chart - Show when training has started */}
-          {currentStatus !== 'not_started' && logs.length > 0 && (
+          {logs.length > 0 && (
             <TrainingLossChart logs={logs} height={350} />
           )}
 
-          {currentStatus === 'not_started' && (
-            <Card className="bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800">
-              <CardContent className="p-6">
-                <div className="text-center">
-                  <div className="bg-blue-100 dark:bg-blue-900/20 rounded-full p-3 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                    <Timer className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <h3 className="font-semibold text-lg text-blue-800 dark:text-blue-300 mb-2">
-                    No Training Job Active
-                  </h3>
-                  <p className="text-blue-700 dark:text-blue-400 mb-4">
-                    Start a fine-tuning job to monitor its progress here. You can configure and start training from the tuning configuration page.
-                  </p>
-                  <Button variant="primary" onClick={() => navigate('/configure')}>
-                    Start Fine-Tuning
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {currentStatus === 'completed' && (
+          {sessionData.status === 'completed' && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -463,10 +475,10 @@ export default function TuningProgress() {
                     </div>
                     <div className="flex-1">
                       <h3 className="font-semibold text-lg text-success-800 dark:text-success-300 mb-1">
-                        Fine-Tuning Completed Successfully!
+                        Training Completed Successfully!
                       </h3>
                       <p className="text-success-700 dark:text-success-400 mb-4">
-                        Your model "{currentSession?.modelName || 'My-Fine-Tuned-Model'}" is now ready to use. You can start testing it or download it for offline usage.
+                        Your model is now ready to use. You can start testing it or download it for offline usage.
                       </p>
                       <div className="flex flex-wrap gap-3">
                         <Button variant="outline" leftIcon={<FileDown className="h-4 w-4" />}>
@@ -490,8 +502,8 @@ export default function TuningProgress() {
         <div className="space-y-6">
           <Card className="sticky top-20">
             <CardHeader>
-              <CardTitle>Training Details</CardTitle>
-              <CardDescription>Information about your fine-tuning job</CardDescription>
+              <CardTitle>Session Details</CardTitle>
+              <CardDescription>Information about this training session</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               <div>
@@ -500,25 +512,23 @@ export default function TuningProgress() {
                   <div>
                     <p className="text-gray-500 dark:text-gray-400">Base Model</p>
                     <p className="text-gray-700 dark:text-gray-300">
-                      {currentSession?.selectedModel?.name || 'No model selected'}
+                      {sessionData.config?.model_name || 'N/A'}
                     </p>
                   </div>
                   <div>
                     <p className="text-gray-500 dark:text-gray-400">Training Method</p>
-                    <p className="text-gray-700 dark:text-gray-300">
-                      {trainingSessionService.getTrainingMethodLabel()}
-                    </p>
+                    <p className="text-gray-700 dark:text-gray-300">LoRA</p>
                   </div>
                   <div>
                     <p className="text-gray-500 dark:text-gray-400">Epochs</p>
                     <p className="text-gray-700 dark:text-gray-300">
-                      {currentSession?.parameters?.epochs || 'N/A'}
+                      {sessionData.config?.num_train_epochs || 'N/A'}
                     </p>
                   </div>
                   <div>
                     <p className="text-gray-500 dark:text-gray-400">Batch Size</p>
                     <p className="text-gray-700 dark:text-gray-300">
-                      {currentSession?.parameters?.batchSize || 'N/A'}
+                      {sessionData.config?.per_device_train_batch_size || 'N/A'}
                     </p>
                   </div>
                 </div>
@@ -530,21 +540,43 @@ export default function TuningProgress() {
                   <div>
                     <p className="text-gray-500 dark:text-gray-400">Examples</p>
                     <p className="text-gray-700 dark:text-gray-300">
-                      {currentSession?.totalExamples?.toLocaleString() || 'N/A'}
+                      {sessionData.dataset_info?.total_rows?.toLocaleString() || 'N/A'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-gray-500 dark:text-gray-400">Size</p>
+                    <p className="text-gray-500 dark:text-gray-400">File Type</p>
                     <p className="text-gray-700 dark:text-gray-300">
-                      {currentSession?.totalSize ? trainingSessionService.formatFileSize(currentSession.totalSize) : 'N/A'}
+                      {sessionData.dataset_info?.file_type || 'N/A'}
                     </p>
                   </div>
-                  <div className="col-span-2">
-                    <p className="text-gray-500 dark:text-gray-400">Split</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium mb-1">Timeline</p>
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <p className="text-gray-500 dark:text-gray-400">Created</p>
                     <p className="text-gray-700 dark:text-gray-300">
-                      {currentSession?.trainValidationSplit ? trainingSessionService.formatTrainValidationSplit(currentSession.trainValidationSplit) : 'N/A'}
+                      {sessionData.created_at ? new Date(sessionData.created_at).toLocaleString() : 'N/A'}
                     </p>
                   </div>
+                  {sessionData.started_at && (
+                    <div>
+                      <p className="text-gray-500 dark:text-gray-400">Started</p>
+                      <p className="text-gray-700 dark:text-gray-300">
+                        {new Date(sessionData.started_at).toLocaleString()}
+                      </p>
+                    </div>
+                  )}
+                  {sessionData.completed_at && (
+                    <div>
+                      <p className="text-gray-500 dark:text-gray-400">Completed</p>
+                      <p className="text-gray-700 dark:text-gray-300">
+                        {new Date(sessionData.completed_at).toLocaleString()}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -636,11 +668,11 @@ export default function TuningProgress() {
                 </div>
               </div>
 
-              {currentStatus === 'completed' && (
+              {sessionData.status === 'completed' && (
                 <div className="p-3 bg-success-50 dark:bg-success-900/20 rounded-md text-success-800 dark:text-success-200 text-sm">
                   <p className="font-medium">Training Successfully Completed</p>
                   <p className="mt-1 text-success-700 dark:text-success-300 text-xs">
-                    Final validation loss: 0.762 (40.2% improvement from base model)
+                    Final validation loss: {getLatestValidationMetrics(logs).evalLoss}
                   </p>
                 </div>
               )}

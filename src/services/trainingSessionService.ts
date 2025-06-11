@@ -132,6 +132,20 @@ class TrainingSessionService {
     return session;
   }
 
+  // Get the unique training URL for a session
+  getTrainingUrl(sessionId?: string): string {
+    const id = sessionId || this.currentSession?.id;
+    if (!id) return '/progress';
+    return `/training/${id}`;
+  }
+
+  // Get the full shareable URL for a session
+  getShareableUrl(sessionId?: string): string {
+    const id = sessionId || this.currentSession?.id;
+    if (!id) return window.location.origin + '/progress';
+    return window.location.origin + `/training/${id}`;
+  }
+
   getCurrentSession(): TrainingSession | null {
     return this.currentSession;
   }
