@@ -99,7 +99,7 @@ class TrainingSessionService {
     const totalExamples = trainingFiles.reduce((sum, file) => sum + (file.recordCount || 0), 0);
 
     const session: TrainingSession = {
-      id: this.generateSessionId(),
+      id: this.generateSessionId(), // This will be updated with backend session ID
       status: 'not_started',
       createdAt: new Date().toISOString(),
       
@@ -130,6 +130,17 @@ class TrainingSessionService {
     this.currentSession = session;
     this.saveSessionToStorage();
     return session;
+  }
+
+  updateSessionId(backendSessionId: string): void {
+    if (!this.currentSession) {
+      console.warn('No current session to update with backend session ID');
+      return;
+    }
+    
+    console.log(`Updating session ID from ${this.currentSession.id} to ${backendSessionId}`);
+    this.currentSession.id = backendSessionId;
+    this.saveSessionToStorage();
   }
 
   // Get the unique training URL for a session

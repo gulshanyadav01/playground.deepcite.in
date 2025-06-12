@@ -241,7 +241,7 @@ class ChatApiService {
     }
   }
 
-  async searchHuggingFaceModels(query: string, limit: number = 20): Promise<Model[]> {
+  async searchHuggingFaceModels(query: string, limit: number = 50): Promise<Model[]> {
     try {
       const response = await this.makeRequest(`/models/huggingface/search?query=${encodeURIComponent(query)}&limit=${limit}`);
       const data = await response.json();

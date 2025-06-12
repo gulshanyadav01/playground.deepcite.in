@@ -47,14 +47,34 @@ export default function TuningProgress() {
   // Get current training session
   const currentSession = trainingSessionService.getCurrentSession();
 
-  // Function to fetch logs from the API
+  // Function to fetch logs from the API (session-specific)
   const fetchLogsFromAPI = async (): Promise<LogEntry[]> => {
+    const sessionId = currentSession?.id;
+    
     try {
+      // If we have a session ID, use session-specific endpoint
+      if (sessionId) {
+        console.log(`Fetching logs for session: ${sessionId}`);
+        const response = await fetch(`https://finetune_engine.deepcite.in/api/training/${sessionId}/logs`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`Fetched ${data.logs?.length || 0} session-specific logs`);
+          return data.logs || [];
+        } else {
+          console.warn(`Session-specific logs failed (${response.status}), falling back to global logs`);
+        }
+      } else {
+        console.warn('No session ID available, using global logs');
+      }
+      
+      // Fallback to global logs
       const response = await fetch('https://finetune_engine.deepcite.in/api/logs');
       if (!response.ok) {
         throw new Error(`Error fetching logs: ${response.statusText}`);
       }
       const data = await response.json();
+      console.log(`Fetched ${data.logs?.length || 0} global logs as fallback`);
       return data.logs || [];
     } catch (error) {
       console.error('Failed to fetch logs:', error);

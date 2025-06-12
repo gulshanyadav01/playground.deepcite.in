@@ -8,6 +8,8 @@ import { chatApi, Model } from '../../services/chatApi';
 import { AnimatedLoader } from '../../components/ui/AnimatedLoader';
 import { useConfigureContext } from './ConfigureContext';
 import { StepNavigation } from '../../components/ui/StepProgress';
+import { ModelWarning } from '../../components/ui/ModelWarning';
+import { isInstructionModel, getNonInstructWarningMessage, getInstructModelRecommendations } from '../../utils/modelUtils';
 
 export default function SelectModel() {
   const navigate = useNavigate();
@@ -24,6 +26,10 @@ export default function SelectModel() {
   const [isLoadingHFModels, setIsLoadingHFModels] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
+
+  // Warning state for non-instruct models
+  const [showWarning, setShowWarning] = useState(false);
+  const [warningAcknowledged, setWarningAcknowledged] = useState(false);
 
   // Get current models list based on active tab
   const currentModels = activeModelTab === 'finetuned' ? availableModels : huggingFaceModels;
@@ -120,6 +126,8 @@ export default function SelectModel() {
     const model = currentModels.find(m => m.id === modelId);
     if (model) {
       dispatch({ type: 'SET_SELECTED_MODEL', payload: model });
+      // Reset warning state when selecting a new model
+      setWarningAcknowledged(false);
     }
   };
 
@@ -135,6 +143,38 @@ export default function SelectModel() {
   useEffect(() => {
     loadHuggingFaceModels(); // Start with HF models as default
   }, []);
+
+  // Check for non-instruct models and show warning
+  useEffect(() => {
+    if (selectedBaseModel && !warningAcknowledged) {
+      const modelName = selectedBaseModel.name || '';
+      const modelId = selectedBaseModel.hf_model_id || selectedBaseModel.id || '';
+      
+      // Only check Hugging Face models for instruction tuning
+      if (activeModelTab === 'huggingface') {
+        const isInstruct = isInstructionModel(modelName, modelId);
+        setShowWarning(!isInstruct);
+      } else {
+        // Fine-tuned models are assumed to be instruction-tuned
+        setShowWarning(false);
+      }
+    } else {
+      setShowWarning(false);
+    }
+  }, [selectedBaseModel, warningAcknowledged, activeModelTab]);
+
+  // Warning handlers
+  const handleWarningAcknowledge = () => {
+    setWarningAcknowledged(true);
+    setShowWarning(false);
+  };
+
+  const handleWarningDismiss = () => {
+    setShowWarning(false);
+    // Clear the selected model to force user to select a different one
+    dispatch({ type: 'SET_SELECTED_MODEL', payload: null });
+    setWarningAcknowledged(false);
+  };
 
   return (
     <div className="space-y-6">
@@ -304,6 +344,18 @@ export default function SelectModel() {
                   </div>
                 </div>
               )}
+
+              {/* Non-Instruct Model Warning */}
+              {selectedBaseModel && showWarning && (
+                <ModelWarning
+                  modelName={selectedBaseModel.name}
+                  message={getNonInstructWarningMessage(selectedBaseModel.name)}
+                  recommendations={getInstructModelRecommendations()}
+                  onAcknowledge={handleWarningAcknowledge}
+                  onDismiss={handleWarningDismiss}
+                  isVisible={showWarning}
+                />
+              )}
             </div>
           )}
             </CardContent>
@@ -314,7 +366,7 @@ export default function SelectModel() {
             currentStep={1}
             totalSteps={3}
             onNext={handleNext}
-            canProceed={!!selectedBaseModel}
+            canProceed={!!selectedBaseModel && (!showWarning || warningAcknowledged)}
             nextLabel="Next: Upload Data"
           />
         </div>

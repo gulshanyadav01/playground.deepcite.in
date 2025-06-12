@@ -42,6 +42,65 @@ export default function ConfigureParameters() {
     });
   };
 
+  // Helper function to handle number input changes without immediate fallbacks
+  const handleNumberInputChange = (field: string, value: string, min: number, max: number, isInteger: boolean = true) => {
+    // Allow empty string during editing
+    if (value === '') {
+      return;
+    }
+    
+    const numValue = isInteger ? parseInt(value) : parseFloat(value);
+    
+    // Only update if it's a valid number within range
+    if (!isNaN(numValue) && numValue >= min && numValue <= max) {
+      handleParameterChange(field, numValue);
+    }
+  };
+
+  // Helper function for training config number inputs
+  const handleTrainingConfigNumberChange = (field: string, value: string, min: number, max: number, isInteger: boolean = true) => {
+    // Allow empty string during editing
+    if (value === '') {
+      return;
+    }
+    
+    const numValue = isInteger ? parseInt(value) : parseFloat(value);
+    
+    // Only update if it's a valid number within range
+    if (!isNaN(numValue) && numValue >= min && numValue <= max) {
+      handleTrainingConfigChange(field, numValue);
+    }
+  };
+
+  // Helper function to handle input blur (when user finishes editing)
+  const handleNumberInputBlur = (field: string, value: string, min: number, defaultValue: number, isInteger: boolean = true) => {
+    if (value === '' || isNaN(isInteger ? parseInt(value) : parseFloat(value))) {
+      handleParameterChange(field, defaultValue);
+    } else {
+      const numValue = isInteger ? parseInt(value) : parseFloat(value);
+      if (numValue < min) {
+        handleParameterChange(field, min);
+      }
+    }
+  };
+
+  // Helper function for training config input blur
+  const handleTrainingConfigInputBlur = (field: string, value: string, min: number, defaultValue: number, isInteger: boolean = true) => {
+    if (value === '' || isNaN(isInteger ? parseInt(value) : parseFloat(value))) {
+      handleTrainingConfigChange(field, defaultValue);
+    } else {
+      const numValue = isInteger ? parseInt(value) : parseFloat(value);
+      if (numValue < min) {
+        handleTrainingConfigChange(field, min);
+      }
+    }
+  };
+
+  // Helper function to handle input focus - select all text for easy replacement
+  const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.target.select();
+  };
+
   const resetToDefaults = () => {
     dispatch({ 
       type: 'SET_PARAMETERS', 
@@ -50,7 +109,7 @@ export default function ConfigureParameters() {
         learningRate: 0.0002,
         batchSize: 8,
         maxSequenceLength: 2048,
-        modelName: 'My-Fine-Tuned-Model',
+        modelName: '',
         cutoff: 0.8,
         loggingSteps: 10,
       }
@@ -108,6 +167,12 @@ export default function ConfigureParameters() {
   };
 
   const handleStartFineTuning = async () => {
+    // Validate model name is not empty
+    if (!parameters.modelName || parameters.modelName.trim() === '') {
+      toast.error('Please enter a model name before starting fine-tuning.');
+      return;
+    }
+
     // Get the file from local storage
     const trainingFile = localStorage.getItem('trainingFile');
     
@@ -228,6 +293,12 @@ export default function ConfigureParameters() {
 
       const data = await response.json();
       
+      // Update session with the backend-returned session ID
+      if (data.job_id) {
+        console.log('Updating session with backend job_id:', data.job_id);
+        trainingSessionService.updateSessionId(data.job_id);
+      }
+      
       // Update session status to indicate training has started
       trainingSessionService.updateSessionStatus('initializing');
       
@@ -259,6 +330,44 @@ export default function ConfigureParameters() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
+
+          {/* Model Name and Description */}
+          <Card>
+    <CardHeader>
+      <CardTitle>Model Name and Description</CardTitle>
+      <CardDescription>
+        Set how your fine-tuned model will be identified
+      </CardDescription>
+    </CardHeader>
+    <CardContent>
+      <div className="space-y-4">
+        <div>
+          <label htmlFor="modelName" className="block text-sm font-medium mb-1">
+            Model Name <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            id="modelName"
+            value={parameters.modelName}
+            onChange={(e) => handleParameterChange('modelName', e.target.value)}
+            className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:border-transparent ${
+              parameters.modelName.trim() === '' 
+                ? 'border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-900/20 focus:ring-red-500' 
+                : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-primary-500'
+            }`}
+            placeholder="Enter a name for your fine-tuned model"
+            required
+          />
+          {parameters.modelName.trim() === '' && (
+            <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+              Model name is required
+            </p>
+          )}
+        </div>
+      </div>
+    </CardContent>
+          </Card>
+
           {/* Parameters Card */}
           <Card>
             <CardHeader>
@@ -313,7 +422,9 @@ export default function ConfigureParameters() {
                         max="10"
                         step="1"
                         value={parameters.epochs}
-                        onChange={(e) => handleParameterChange('epochs', parseInt(e.target.value) || 1)}
+                        onChange={(e) => handleNumberInputChange('epochs', e.target.value, 1, 10, true)}
+                        onBlur={(e) => handleNumberInputBlur('epochs', e.target.value, 1, 3, true)}
+                        onFocus={handleInputFocus}
                         className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                       />
                     </div>
@@ -353,7 +464,9 @@ export default function ConfigureParameters() {
                         max="0.001"
                         step="0.00001"
                         value={parameters.learningRate}
-                        onChange={(e) => handleParameterChange('learningRate', parseFloat(e.target.value) || 0.00001)}
+                        onChange={(e) => handleNumberInputChange('learningRate', e.target.value, 0.00001, 0.001, false)}
+                        onBlur={(e) => handleNumberInputBlur('learningRate', e.target.value, 0.00001, 0.0002, false)}
+                        onFocus={handleInputFocus}
                         className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                       />
                     </div>
@@ -393,7 +506,9 @@ export default function ConfigureParameters() {
                         max="32"
                         step="1"
                         value={parameters.batchSize}
-                        onChange={(e) => handleParameterChange('batchSize', parseInt(e.target.value) || 1)}
+                        onChange={(e) => handleNumberInputChange('batchSize', e.target.value, 1, 32, true)}
+                        onBlur={(e) => handleNumberInputBlur('batchSize', e.target.value, 1, 8, true)}
+                        onFocus={handleInputFocus}
                         className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                       />
                     </div>
@@ -433,7 +548,9 @@ export default function ConfigureParameters() {
                         max="2048"
                         step="128"
                         value={parameters.maxSequenceLength}
-                        onChange={(e) => handleParameterChange('maxSequenceLength', parseInt(e.target.value) || 128)}
+                        onChange={(e) => handleNumberInputChange('maxSequenceLength', e.target.value, 128, 2048, true)}
+                        onBlur={(e) => handleNumberInputBlur('maxSequenceLength', e.target.value, 128, 2048, true)}
+                        onFocus={handleInputFocus}
                         className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                       />
                     </div>
@@ -473,7 +590,9 @@ export default function ConfigureParameters() {
                         max="100"
                         step="1"
                         value={parameters.loggingSteps}
-                        onChange={(e) => handleParameterChange('loggingSteps', parseInt(e.target.value) || 1)}
+                        onChange={(e) => handleNumberInputChange('loggingSteps', e.target.value, 1, 100, true)}
+                        onBlur={(e) => handleNumberInputBlur('loggingSteps', e.target.value, 1, 10, true)}
+                        onFocus={handleInputFocus}
                         className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                       />
                     </div>
@@ -499,11 +618,12 @@ export default function ConfigureParameters() {
                     <input
                       type="range"
                       id="cutoff"
-                      min="0.5"
+                      min="0.1"
                       max="0.95"
                       step="0.05"
                       value={parameters.cutoff}
                       onChange={(e) => handleParameterChange('cutoff', parseFloat(e.target.value))}
+                      
                       className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
                     />
                     <div className="w-20">
@@ -514,6 +634,7 @@ export default function ConfigureParameters() {
                         step="0.05"
                         value={Math.round(parameters.cutoff * 100)}
                         onChange={(e) => handleParameterChange('cutoff', (parseInt(e.target.value) || 50) / 100)}
+                        onFocus={handleInputFocus}
                         className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                       />
                     </div>
@@ -669,6 +790,7 @@ export default function ConfigureParameters() {
                                 step="1"
                                 value={trainingConfig.lora_rank}
                                 onChange={(e) => handleTrainingConfigChange('lora_rank', parseInt(e.target.value) || 1)}
+                                onFocus={handleInputFocus}
                                 className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                               />
                             </div>
@@ -706,6 +828,7 @@ export default function ConfigureParameters() {
                                 step="1"
                                 value={trainingConfig.lora_alpha}
                                 onChange={(e) => handleTrainingConfigChange('lora_alpha', parseInt(e.target.value) || 1)}
+                                onFocus={handleInputFocus}
                                 className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                               />
                             </div>
@@ -741,6 +864,7 @@ export default function ConfigureParameters() {
                                 step="0.01"
                                 value={trainingConfig.lora_dropout}
                                 onChange={(e) => handleTrainingConfigChange('lora_dropout', parseFloat(e.target.value) || 0)}
+                                onFocus={handleInputFocus}
                                 className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                               />
                             </div>
@@ -833,6 +957,7 @@ export default function ConfigureParameters() {
                                 step="10"
                                 value={trainingConfig.warmup_steps}
                                 onChange={(e) => handleTrainingConfigChange('warmup_steps', parseInt(e.target.value) || 0)}
+                                onFocus={handleInputFocus}
                                 className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                               />
                             </div>
@@ -867,6 +992,7 @@ export default function ConfigureParameters() {
                                 step="0.01"
                                 value={trainingConfig.adam_beta1}
                                 onChange={(e) => handleTrainingConfigChange('adam_beta1', parseFloat(e.target.value) || 0.9)}
+                                onFocus={handleInputFocus}
                                 className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                               />
                             </div>
@@ -901,6 +1027,7 @@ export default function ConfigureParameters() {
                                 step="0.0001"
                                 value={trainingConfig.adam_beta2}
                                 onChange={(e) => handleTrainingConfigChange('adam_beta2', parseFloat(e.target.value) || 0.999)}
+                                onFocus={handleInputFocus}
                                 className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                               />
                             </div>
@@ -935,6 +1062,7 @@ export default function ConfigureParameters() {
                                 step="0.1"
                                 value={trainingConfig.max_grad_norm}
                                 onChange={(e) => handleTrainingConfigChange('max_grad_norm', parseFloat(e.target.value) || 1.0)}
+                                onFocus={handleInputFocus}
                                 className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                               />
                             </div>
@@ -969,6 +1097,7 @@ export default function ConfigureParameters() {
                                 step="1"
                                 value={trainingConfig.gradient_accumulation_steps}
                                 onChange={(e) => handleTrainingConfigChange('gradient_accumulation_steps', parseInt(e.target.value) || 1)}
+                                onFocus={handleInputFocus}
                                 className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                               />
                             </div>
@@ -1031,6 +1160,7 @@ export default function ConfigureParameters() {
                                 step="0.001"
                                 value={trainingConfig.weight_decay}
                                 onChange={(e) => handleTrainingConfigChange('weight_decay', parseFloat(e.target.value) || 0)}
+                                onFocus={handleInputFocus}
                                 className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                               />
                             </div>
@@ -1065,6 +1195,7 @@ export default function ConfigureParameters() {
                                 step="0.01"
                                 value={trainingConfig.dropout_rate}
                                 onChange={(e) => handleTrainingConfigChange('dropout_rate', parseFloat(e.target.value) || 0)}
+                                onFocus={handleInputFocus}
                                 className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                               />
                             </div>
@@ -1099,6 +1230,7 @@ export default function ConfigureParameters() {
                                 step="0.01"
                                 value={trainingConfig.attention_dropout}
                                 onChange={(e) => handleTrainingConfigChange('attention_dropout', parseFloat(e.target.value) || 0)}
+                                onFocus={handleInputFocus}
                                 className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                               />
                             </div>
@@ -1133,6 +1265,7 @@ export default function ConfigureParameters() {
                                 step="0.01"
                                 value={trainingConfig.label_smoothing_factor}
                                 onChange={(e) => handleTrainingConfigChange('label_smoothing_factor', parseFloat(e.target.value) || 0)}
+                                onFocus={handleInputFocus}
                                 className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                               />
                             </div>
@@ -1196,6 +1329,7 @@ export default function ConfigureParameters() {
                                   step="1"
                                   value={trainingConfig.dataloader_num_workers}
                                   onChange={(e) => handleTrainingConfigChange('dataloader_num_workers', parseInt(e.target.value) || 0)}
+                                  onFocus={handleInputFocus}
                                   className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                                 />
                               </div>
@@ -1306,32 +1440,7 @@ export default function ConfigureParameters() {
             </CardContent>
           </Card>
 
-          {/* Model Name and Description */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Model Name and Description</CardTitle>
-              <CardDescription>
-                Set how your fine-tuned model will be identified
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="modelName" className="block text-sm font-medium mb-1">
-                    Model Name
-                  </label>
-                  <input
-                    type="text"
-                    id="modelName"
-                    value={parameters.modelName}
-                    onChange={(e) => handleParameterChange('modelName', e.target.value)}
-                    className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    placeholder="Enter a name for your fine-tuned model"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+
 
           {/* Final Review Button */}
           <div className="flex justify-center py-8 px-6">

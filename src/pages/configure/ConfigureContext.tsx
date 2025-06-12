@@ -59,7 +59,7 @@ const initialState: ConfigureState = {
     learningRate: 0.0002,
     batchSize: 8,
     maxSequenceLength: 2048,
-    modelName: 'My-Fine-Tuned-Model',
+    modelName: '',
     cutoff: 0.8,
     loggingSteps: 10,
   },
