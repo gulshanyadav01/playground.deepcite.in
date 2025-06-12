@@ -775,6 +775,61 @@ export default function ConfigureTuning() {
 
           <Card>
             <CardHeader>
+              <CardTitle>Model Name and Description</CardTitle>
+              <CardDescription>
+                Set how your fine-tuned model will be identified
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="modelName" className="block text-sm font-medium mb-1">
+                    Model Name
+                  </label>
+                  <input
+                    type="text"
+                    id="modelName"
+                    value={parameters.modelName}
+                    onChange={(e) => handleChange('modelName', e.target.value)}
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    placeholder="Enter a name for your fine-tuned model"
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="modelDescription" className="block text-sm font-medium mb-1">
+                    Description (Optional)
+                  </label>
+                  <textarea
+                    id="modelDescription"
+                    rows={3}
+                    className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    placeholder="Add a description of your model's purpose and capabilities"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Tags (Optional)
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline" className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                      production
+                    </Badge>
+                    <Badge variant="outline" className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                      experimental
+                    </Badge>
+                    <Badge variant="outline" className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                      + Add Tag
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>Training Parameters</span>
                 <Button 
@@ -1807,60 +1862,7 @@ export default function ConfigureTuning() {
           </Card>
 
           
-          <Card>
-            <CardHeader>
-              <CardTitle>Model Name and Description</CardTitle>
-              <CardDescription>
-                Set how your fine-tuned model will be identified
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="modelName" className="block text-sm font-medium mb-1">
-                    Model Name
-                  </label>
-                  <input
-                    type="text"
-                    id="modelName"
-                    value={parameters.modelName}
-                    onChange={(e) => handleChange('modelName', e.target.value)}
-                    className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    placeholder="Enter a name for your fine-tuned model"
-                  />
-                </div>
-                
-                <div>
-                  <label htmlFor="modelDescription" className="block text-sm font-medium mb-1">
-                    Description (Optional)
-                  </label>
-                  <textarea
-                    id="modelDescription"
-                    rows={3}
-                    className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    placeholder="Add a description of your model's purpose and capabilities"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Tags (Optional)
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline" className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                      production
-                    </Badge>
-                    <Badge variant="outline" className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                      experimental
-                    </Badge>
-                    <Badge variant="outline" className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                      + Add Tag
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+
 
           {/* Final Review Configuration Button */}
           <div className="flex justify-center py-8 px-6">
