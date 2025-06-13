@@ -15,6 +15,7 @@ interface ConfigureState {
   // Step 2: Data Upload
   files: FileWithPreview[];
   selectedFile: File | null;
+  selectedFileId: string | null; // For backend file management
   validationStatus: 'idle' | 'validating' | 'valid' | 'invalid';
   validationMessages: string[];
   
@@ -40,6 +41,7 @@ type ConfigureAction =
   | { type: 'SET_ACTIVE_MODEL_TAB'; payload: 'finetuned' | 'huggingface' }
   | { type: 'SET_FILES'; payload: FileWithPreview[] }
   | { type: 'SET_SELECTED_FILE'; payload: File | null }
+  | { type: 'SET_SELECTED_FILE_ID'; payload: string | null }
   | { type: 'SET_VALIDATION_STATUS'; payload: { status: 'idle' | 'validating' | 'valid' | 'invalid'; messages: string[] } }
   | { type: 'SET_PARAMETERS'; payload: Partial<ConfigureState['parameters']> }
   | { type: 'SET_TRAINING_CONFIG'; payload: Partial<TrainingConfig> }
@@ -52,6 +54,7 @@ const initialState: ConfigureState = {
   activeModelTab: 'huggingface',
   files: [],
   selectedFile: null,
+  selectedFileId: null,
   validationStatus: 'idle',
   validationMessages: [],
   parameters: {
@@ -81,6 +84,9 @@ function configureReducer(state: ConfigureState, action: ConfigureAction): Confi
     
     case 'SET_SELECTED_FILE':
       return { ...state, selectedFile: action.payload };
+    
+    case 'SET_SELECTED_FILE_ID':
+      return { ...state, selectedFileId: action.payload };
     
     case 'SET_VALIDATION_STATUS':
       return { 
@@ -145,8 +151,8 @@ export function ConfigureProvider({ children }: { children: ReactNode }) {
     // Can go to step 2 if step 1 is completed (model selected)
     if (step === 2) return state.selectedBaseModel !== null;
     
-    // Can go to step 3 if step 2 is completed (files uploaded and validated)
-    if (step === 3) return state.files.length > 0 && state.validationStatus === 'valid';
+    // Can go to step 3 if step 2 is completed (file selected and validated)
+    if (step === 3) return (state.selectedFileId !== null || (state.files.length > 0 && state.validationStatus === 'valid'));
     
     return false;
   };

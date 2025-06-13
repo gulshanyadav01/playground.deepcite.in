@@ -6,6 +6,7 @@ export interface TrainingFile {
   size: number;
   recordCount?: number;
   type: string;
+  fileId?: string; // For backend file management
 }
 
 export interface TrainingSession {
@@ -109,6 +110,57 @@ class TrainingSessionService {
       files: trainingFiles,
       totalExamples,
       totalSize,
+      trainValidationSplit: parameters.cutoff,
+      
+      parameters,
+      trainingConfig,
+      
+      progress: {
+        currentEpoch: 0,
+        totalEpochs: parameters.epochs,
+        currentStep: 0,
+        totalSteps: 0,
+        progressPercent: 0,
+        timeElapsed: 0,
+        timeRemaining: 0
+      },
+      
+      metrics: {}
+    };
+
+    this.currentSession = session;
+    this.saveSessionToStorage();
+    return session;
+  }
+
+  createSessionWithFileId(
+    selectedModel: Model,
+    fileId: string,
+    fileMetadata: { name: string; size: number; recordCount: number; type: string },
+    parameters: TrainingSession['parameters'],
+    trainingConfig: TrainingConfig,
+    modelName: string
+  ): TrainingSession {
+    // Create training file info from file metadata
+    const trainingFiles: TrainingFile[] = [{
+      name: fileMetadata.name,
+      size: fileMetadata.size,
+      type: fileMetadata.type,
+      recordCount: fileMetadata.recordCount,
+      fileId: fileId
+    }];
+
+    const session: TrainingSession = {
+      id: this.generateSessionId(), // This will be updated with backend session ID
+      status: 'not_started',
+      createdAt: new Date().toISOString(),
+      
+      selectedModel,
+      modelName,
+      
+      files: trainingFiles,
+      totalExamples: fileMetadata.recordCount,
+      totalSize: fileMetadata.size,
       trainValidationSplit: parameters.cutoff,
       
       parameters,

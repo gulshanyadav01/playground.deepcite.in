@@ -827,7 +827,7 @@ export default function ConfigureTuning() {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
@@ -1282,8 +1282,8 @@ export default function ConfigureTuning() {
                             onChange={(e) => setTrainingConfig(prev => ({ ...prev, lr_scheduler_type: e.target.value as any }))}
                             className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                           >
-                            <option value="linear">Linear</option>
                             <option value="cosine">Cosine</option>
+                            <option value="linear">Linear</option>
                             <option value="polynomial">Polynomial</option>
                             <option value="constant">Constant</option>
                             <option value="constant_with_warmup">Constant with Warmup</option>
