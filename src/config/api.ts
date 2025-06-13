@@ -1,5 +1,6 @@
 // Use proxy in development, direct URL in production
-export const API_BASE_URL = import.meta.env.DEV ? '/api' : 'https://finetune_engine.deepcite.in';
+export const API_BASE_URL = import.meta.env.DEV ? '/api' : 'https://finetune_engine.deepcite.in/api';
+
 
 export const API_ENDPOINTS = {
   // File management
