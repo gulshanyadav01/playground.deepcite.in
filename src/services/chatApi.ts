@@ -1,5 +1,5 @@
 // Use proxy in development, direct URL in production
-const BASE_URL = import.meta.env.DEV ? '/api' : 'https://finetune_engine.deepcite.in';
+const BASE_URL = import.meta.env.DEV ? '/api' : 'https://finetune_engine.deepcite.in/api';
 
 export interface Model {
   id: string;
