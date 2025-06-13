@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from './Button';
 import { SaveConfigModal } from './SaveConfigModal';
 import { configService } from '../../services/configService';
 import { X, Check, AlertTriangle, ChevronDown, ChevronUp, Settings, Database, Zap, Clock, DollarSign } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Badge } from './Badge';
+import { fileService, FileMetadata } from '../../services/fileService';
+import { useConfigureContext } from '../../pages/configure/ConfigureContext';
 
 interface ConfigurationReviewModalProps {
   isOpen: boolean;
@@ -27,10 +29,17 @@ export function ConfigurationReviewModal({
   onStartTraining, 
   configuration 
 }: ConfigurationReviewModalProps) {
+  const { state } = useConfigureContext();
+  const { selectedFileId } = state;
+  
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  
+  // Selected file metadata state
+  const [selectedFileMetadata, setSelectedFileMetadata] = useState<FileMetadata | null>(null);
+  const [isLoadingFileMetadata, setIsLoadingFileMetadata] = useState(false);
   
   // Expandable sections state
   const [expandedSections, setExpandedSections] = useState({
@@ -40,6 +49,30 @@ export function ConfigurationReviewModal({
     memory: false,
     monitoring: false
   });
+
+  // Load selected file metadata when modal opens or selectedFileId changes
+  useEffect(() => {
+    const loadSelectedFileMetadata = async () => {
+      if (isOpen && selectedFileId) {
+        try {
+          setIsLoadingFileMetadata(true);
+          const response = await fileService.getFileInfo(selectedFileId);
+          if (response.success) {
+            setSelectedFileMetadata(response.file_info);
+          }
+        } catch (error) {
+          console.error('Failed to load selected file metadata:', error);
+          setSelectedFileMetadata(null);
+        } finally {
+          setIsLoadingFileMetadata(false);
+        }
+      } else {
+        setSelectedFileMetadata(null);
+      }
+    };
+
+    loadSelectedFileMetadata();
+  }, [isOpen, selectedFileId]);
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({
@@ -192,19 +225,40 @@ export function ConfigurationReviewModal({
               {getValidationIcon()}
               <div className="flex-1">
                 <h3 className="font-medium text-gray-900 dark:text-gray-100">Training Data</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  {configuration.files.length > 0 
-                    ? `${configuration.files.length} file${configuration.files.length > 1 ? 's' : ''} (${(configuration.files.reduce((total: number, file: any) => total + file.size, 0) / 1024 / 1024).toFixed(2)} MB total)`
-                    : 'No files uploaded'
-                  }
-                </p>
+                {isLoadingFileMetadata ? (
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Loading file information...</p>
+                ) : selectedFileMetadata ? (
+                  <div className="mt-1">
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      {selectedFileMetadata.display_name}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      {fileService.formatFileSize(selectedFileMetadata.file_size)} • {selectedFileMetadata.validation_details.total_rows} rows • {selectedFileMetadata.file_type.toUpperCase()}
+                    </p>
+                  </div>
+                ) : selectedFileId ? (
+                  <p className="text-sm text-red-600 dark:text-red-400 mt-1">Failed to load file information</p>
+                ) : (
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">No file selected</p>
+                )}
                 <div className="flex items-center gap-2 mt-2">
                   <Badge 
-                    variant={configuration.validationStatus === 'valid' ? 'default' : 'outline'} 
+                    variant={selectedFileMetadata?.validation_status === 'valid' ? 'default' : 'outline'} 
                     size="sm"
                   >
-                    {getValidationText()}
+                    {selectedFileMetadata ? (
+                      <>
+                        {fileService.getValidationStatusIcon(selectedFileMetadata.validation_status)} {selectedFileMetadata.validation_status}
+                      </>
+                    ) : (
+                      getValidationText()
+                    )}
                   </Badge>
+                  {selectedFileMetadata && (
+                    <Badge variant="outline" size="sm">
+                      {selectedFileMetadata.file_type.toUpperCase()}
+                    </Badge>
+                  )}
                 </div>
               </div>
             </div>

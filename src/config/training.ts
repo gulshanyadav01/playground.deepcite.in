@@ -23,9 +23,11 @@ export interface TrainingConfig {
   // Experiment tracking platform
   report_to: 'wandb' | 'tensorboard' | 'none';
   
+  // Dataset Sampling Parameters
+  max_sample_size: number | null; // null = use all data, number = limit to N samples
 
   // Optimization Parameters
-  lr_scheduler_type: 'linear' | 'cosine' | 'polynomial' | 'constant' | 'constant_with_warmup';
+  lr_scheduler_type: 'cosine'| 'linear' | 'polynomial' | 'constant' | 'constant_with_warmup';
   adam_beta1: number;
   adam_beta2: number;
   adam_epsilon: number;
@@ -72,13 +74,16 @@ export const defaultTrainingConfig: TrainingConfig = {
   warmup_steps: 100,
   lora_rank: 8,
   quantization: '4bit',
-  logging_steps: 10,
+  logging_steps: 1,
   weight_decay: 0.01,
   seed: 42,
   report_to: 'tensorboard',
 
+  // Dataset Sampling Parameters
+  max_sample_size: null, // null = use all data
+
   // Optimization Parameters
-  lr_scheduler_type: 'linear',
+  lr_scheduler_type: 'cosine',
   adam_beta1: 0.9,
   adam_beta2: 0.999,
   adam_epsilon: 1e-8,

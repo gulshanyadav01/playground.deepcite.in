@@ -68,6 +68,32 @@ export default function TrainingLossChart({ logs, height = 400 }: TrainingLossCh
     return value.toFixed(1);
   };
 
+  // Calculate optimal step interval for X-axis
+  const calculateOptimalStepInterval = (chartData: LossDataPoint[]) => {
+    if (chartData.length === 0) return 'preserveStartEnd';
+    
+    const steps = chartData.map(point => point.step).sort((a, b) => a - b);
+    const minStep = steps[0];
+    const maxStep = steps[steps.length - 1];
+    const totalSteps = maxStep - minStep + 1;
+    
+    // Determine optimal interval based on total steps
+    if (totalSteps <= 10) {
+      // Show all steps for small datasets
+      return 'preserveStartEnd';
+    } else if (totalSteps <= 50) {
+      return Math.max(1, Math.floor(totalSteps / 10));
+    } else if (totalSteps <= 100) {
+      return Math.max(1, Math.floor(totalSteps / 8));
+    } else if (totalSteps <= 500) {
+      return Math.max(1, Math.floor(totalSteps / 10));
+    } else if (totalSteps <= 1000) {
+      return Math.max(1, Math.floor(totalSteps / 10));
+    } else {
+      return Math.max(1, Math.floor(totalSteps / 12));
+    }
+  };
+
   // Calculate loss statistics and trends
   const lossAnalysis = useMemo(() => {
     const trainingLosses = logs
@@ -192,6 +218,11 @@ export default function TrainingLossChart({ logs, height = 400 }: TrainingLossCh
 
     return chartPoints;
   }, [logs]);
+
+  // Calculate optimal step display interval
+  const stepInterval = useMemo(() => {
+    return calculateOptimalStepInterval(chartData);
+  }, [chartData]);
 
   const hasTrainingData = chartData.some(point => point.trainingLoss !== undefined);
   const hasValidationData = chartData.some(point => point.validationLoss !== undefined);
@@ -333,7 +364,7 @@ export default function TrainingLossChart({ logs, height = 400 }: TrainingLossCh
               axisLine={false}
               tickLine={false}
               tick={{ fontSize: 12, fill: '#6b7280' }}
-              interval={0}
+              interval={stepInterval}
               label={{ value: 'Training Step', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fontSize: '12px', fill: '#6b7280' } }}
             />
             <YAxis 

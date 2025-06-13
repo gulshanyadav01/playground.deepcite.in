@@ -23,7 +23,7 @@ const navItems = [
   { icon: Brain, label: 'Train', path: '/configure', subItems: trainSteps },
   { icon: LineChart, label: 'Evaluate', path: '/evaluate/test-data', subItems: evaluateSteps },
   { icon: MessageSquare, label: 'Chat', path: '/query' },
-  { icon: Activity, label: 'Monitor', path: '/monitoring' },
+  { icon: Activity, label: 'System Monitor', path: '/monitoring' },
   { icon: Settings, label: 'Settings', path: '/settings' },
 ];
 

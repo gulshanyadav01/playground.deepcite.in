@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -12,11 +12,12 @@ import { ConfigurationReviewModal } from '../../components/ui/ConfigurationRevie
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import trainingSessionService from '../../services/trainingSessionService';
+import { fileService, FileMetadata } from '../../services/fileService';
 
 export default function ConfigureParameters() {
   const navigate = useNavigate();
   const { state, dispatch, completeCurrentStep } = useConfigureContext();
-  const { parameters, trainingConfig, selectedBaseModel, files, validationStatus, activeModelTab } = state;
+  const { parameters, trainingConfig, selectedBaseModel, files, validationStatus, activeModelTab, selectedFileId } = state;
 
   // Local state for UI
   const [showAdvancedParams, setShowAdvancedParams] = useState(false);
@@ -27,6 +28,34 @@ export default function ConfigureParameters() {
   const [showMemoryPerformance, setShowMemoryPerformance] = useState(false);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [currentConfigName, setCurrentConfigName] = useState('Default Settings');
+  
+  // Selected file metadata state
+  const [selectedFileMetadata, setSelectedFileMetadata] = useState<FileMetadata | null>(null);
+  const [isLoadingFileMetadata, setIsLoadingFileMetadata] = useState(false);
+
+  // Load selected file metadata when selectedFileId changes
+  useEffect(() => {
+    const loadSelectedFileMetadata = async () => {
+      if (selectedFileId) {
+        try {
+          setIsLoadingFileMetadata(true);
+          const response = await fileService.getFileInfo(selectedFileId);
+          if (response.success) {
+            setSelectedFileMetadata(response.file_info);
+          }
+        } catch (error) {
+          console.error('Failed to load selected file metadata:', error);
+          setSelectedFileMetadata(null);
+        } finally {
+          setIsLoadingFileMetadata(false);
+        }
+      } else {
+        setSelectedFileMetadata(null);
+      }
+    };
+
+    loadSelectedFileMetadata();
+  }, [selectedFileId]);
 
   const handleParameterChange = (field: string, value: string | number) => {
     dispatch({ 
@@ -173,11 +202,9 @@ export default function ConfigureParameters() {
       return;
     }
 
-    // Get the file from local storage
-    const trainingFile = localStorage.getItem('trainingFile');
-    
-    if (!trainingFile) {
-      toast.error('No training file found. Please upload data first.');
+    // Check if a file is selected from the backend file manager
+    if (!selectedFileId) {
+      toast.error('No training file selected. Please select a file first.');
       return;
     }
 
@@ -186,23 +213,30 @@ export default function ConfigureParameters() {
       return;
     }
 
-    // Parse the stored file data
-    const { content, name } = JSON.parse(trainingFile);
+    // Validate that the selected file metadata is loaded
+    if (!selectedFileMetadata) {
+      toast.error('File information not loaded. Please try again.');
+      return;
+    }
+
+    // Validate file status
+    if (selectedFileMetadata.validation_status !== 'valid') {
+      toast.error('Selected file is not valid for training. Please select a valid file.');
+      return;
+    }
 
     // Create training session before starting the API call
     try {
-      // Convert files from the context to File objects for the session
-      const sessionFiles = files.map(file => {
-        // Create a mock File object with the necessary properties
-        const mockFile = new File([content], file.name, { type: 'application/json' });
-        Object.defineProperty(mockFile, 'size', { value: file.size, writable: false });
-        return mockFile;
+      // Create a mock File object for the session using selected file metadata
+      const mockFile = new File([''], selectedFileMetadata.original_filename, { 
+        type: selectedFileMetadata.file_type === 'json' ? 'application/json' : 'text/csv' 
       });
+      Object.defineProperty(mockFile, 'size', { value: selectedFileMetadata.file_size, writable: false });
 
       // Create the training session
       const session = trainingSessionService.createSession(
         selectedBaseModel,
-        sessionFiles,
+        [mockFile],
         parameters,
         trainingConfig,
         parameters.modelName
@@ -219,11 +253,8 @@ export default function ConfigureParameters() {
       ? selectedBaseModel.hf_model_id || selectedBaseModel.name
       : selectedBaseModel.name;
     
-    // Prepare the request payload
+    // Prepare the request payload for the new file-based API (without file_id)
     const payload = {
-      file_content: content,
-      file_name: name,
-      file_type: "json",
       model_name: modelIdentifier,
       max_seq_length: parameters.maxSequenceLength,
       num_train_epochs: parameters.epochs,
@@ -234,6 +265,9 @@ export default function ConfigureParameters() {
       save_steps: trainingConfig.save_steps,
       logging_steps: parameters.loggingSteps,
       output_dir: `./results/${parameters.modelName}`,
+      
+      // Dataset Sampling
+      max_sample_size: trainingConfig.max_sample_size,
       
       // LoRA Configuration
       lora_r: trainingConfig.lora_rank,
@@ -271,14 +305,15 @@ export default function ConfigureParameters() {
       report_to: trainingConfig.report_to
     };
     
-    console.log(payload);
+    console.log('Training payload:', payload);
+    console.log('File ID (query param):', selectedFileId);
     
     // Show loading toast
     toast.loading('Starting fine-tuning process...');
     
-    // Make API call
+    // Make API call to the file-based endpoint with file_id as query parameter
     try {
-      const response = await fetch('https://finetune_engine.deepcite.in/finetune', {
+      const response = await fetch(`https://finetune_engine.deepcite.in/finetune-with-file?file_id=${encodeURIComponent(selectedFileId)}`, {
         method: 'POST', 
         headers: {
           'Content-Type': 'application/json'
@@ -602,6 +637,74 @@ export default function ConfigureParameters() {
                     <span>50</span>
                     <span>100</span>
                   </div>
+                </div>
+
+                {/* Max Sample Size */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="maxSampleSize" className="block text-sm font-medium">
+                      Max Sample Size
+                    </label>
+                    <Tooltip content="Limit the number of training samples. Leave empty to use all available data. Useful for quick experiments with large datasets.">
+                      <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
+                    </Tooltip>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      id="enableMaxSampleSize"
+                      checked={trainingConfig.max_sample_size !== null}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          handleTrainingConfigChange('max_sample_size', 1000);
+                        } else {
+                          handleTrainingConfigChange('max_sample_size', null);
+                        }
+                      }}
+                      className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                    />
+                    <label htmlFor="enableMaxSampleSize" className="text-sm">
+                      Limit sample size
+                    </label>
+                  </div>
+                  {trainingConfig.max_sample_size !== null && (
+                    <div className="flex items-center space-x-3 mt-2">
+                      <input
+                        type="range"
+                        id="maxSampleSize"
+                        min="10"
+                        max="100000"
+                        step="10"
+                        value={trainingConfig.max_sample_size || 1000}
+                        onChange={(e) => handleTrainingConfigChange('max_sample_size', parseInt(e.target.value))}
+                        className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
+                      />
+                      <div className="w-24">
+                        <input
+                          type="number"
+                          min="10"
+                          max="1000000"
+                          step="10"
+                          value={trainingConfig.max_sample_size || 1000}
+                          onChange={(e) => handleTrainingConfigNumberChange('max_sample_size', e.target.value, 10, 1000000, true)}
+                          onBlur={(e) => handleTrainingConfigInputBlur('max_sample_size', e.target.value, 10, 1000, true)}
+                          onFocus={handleInputFocus}
+                          className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {trainingConfig.max_sample_size !== null && selectedFileMetadata && (
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Using {Math.min(trainingConfig.max_sample_size, selectedFileMetadata.validation_details.total_rows).toLocaleString()} of {selectedFileMetadata.validation_details.total_rows.toLocaleString()} available samples 
+                      ({((Math.min(trainingConfig.max_sample_size, selectedFileMetadata.validation_details.total_rows) / selectedFileMetadata.validation_details.total_rows) * 100).toFixed(1)}%)
+                    </div>
+                  )}
+                  {trainingConfig.max_sample_size === null && (
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Will use all available data for training
+                    </div>
+                  )}
                 </div>
                 
                 {/* Training/Validation Split */}
@@ -1483,12 +1586,27 @@ export default function ConfigureParameters() {
               
               <div className="space-y-1">
                 <p className="text-sm font-medium">Dataset</p>
-                <p className="text-sm text-gray-700 dark:text-gray-300">
-                  {files.length > 0 
-                    ? `${files.length} file${files.length > 1 ? 's' : ''} (${(files.reduce((total, file) => total + file.size, 0) / 1024 / 1024).toFixed(2)} MB total)`
-                    : 'No files uploaded'
-                  }
-                </p>
+                {isLoadingFileMetadata ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Loading file information...</p>
+                ) : selectedFileMetadata ? (
+                  <div className="space-y-1">
+                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                      {selectedFileMetadata.display_name}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {fileService.formatFileSize(selectedFileMetadata.file_size)} • {selectedFileMetadata.validation_details.total_rows} rows • {selectedFileMetadata.file_type.toUpperCase()}
+                    </p>
+                    <div className="flex items-center space-x-1">
+                      <span className={`text-xs ${fileService.getValidationStatusColor(selectedFileMetadata.validation_status)}`}>
+                        {fileService.getValidationStatusIcon(selectedFileMetadata.validation_status)} {selectedFileMetadata.validation_status}
+                      </span>
+                    </div>
+                  </div>
+                ) : selectedFileId ? (
+                  <p className="text-sm text-red-600 dark:text-red-400">Failed to load file information</p>
+                ) : (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">No file selected</p>
+                )}
               </div>
               
               <div className="space-y-1">

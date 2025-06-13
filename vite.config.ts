@@ -12,12 +12,8 @@ export default defineConfig({
       '/api': {
         target: 'https://finetune_engine.deepcite.in',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
         secure: true,
-        headers: {
-          'Accept': '*/*',
-          'Content-Type': 'application/json',
-        },
+        // Keep the /api prefix - don't rewrite it
       },
     },
   },
