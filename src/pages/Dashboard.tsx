@@ -7,6 +7,7 @@ import { Progress } from '../components/ui/Progress';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { AnimatedLoader } from '../components/ui/AnimatedLoader';
+import { API_BASE_URL_WITH_API } from '../config/api';
 
 interface TrainingSession {
   id: string;
@@ -51,7 +52,7 @@ export default function Dashboard() {
   // Fetch dashboard statistics
   const fetchStats = async () => {
     try {
-      const response = await fetch('https://finetune_engine.deepcite.in/api/training/dashboard/stats');
+      const response = await fetch(`${API_BASE_URL_WITH_API}/training/dashboard/stats`);
       if (response.ok) {
         const data = await response.json();
         setStats(data);
@@ -64,7 +65,7 @@ export default function Dashboard() {
   // Fetch all training sessions
   const fetchSessions = async () => {
     try {
-      const response = await fetch('https://finetune_engine.deepcite.in/api/training/sessions');
+      const response = await fetch(`${API_BASE_URL_WITH_API}/training/sessions`);
       if (response.ok) {
         const data = await response.json();
         setAllSessions(data.sessions);

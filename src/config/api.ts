@@ -1,5 +1,16 @@
-// Use proxy in development, direct URL in production
-export const API_BASE_URL = import.meta.env.DEV ? '/api' : 'https://finetune_engine.deepcite.in/api';
+// Enhanced environment-aware API configuration
+const getApiBaseUrl = (): string => {
+  // Priority: Environment variable > Development proxy > Production fallback
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  return "";
+};
+
+export const API_BASE_URL = getApiBaseUrl();
+
+// Full API URL with /api suffix for services that need it
+export const API_BASE_URL_WITH_API = `${API_BASE_URL}${API_BASE_URL.endsWith('/api') ? '' : '/api'}`;
 
 
 export const API_ENDPOINTS = {

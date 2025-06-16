@@ -8,6 +8,7 @@ import { Timer, CheckCircle2, ChevronDown, Play, Pause, FileDown, ArrowUpRight, 
 import { motion, AnimatePresence } from 'framer-motion';
 import TrainingLossChart from '../components/training/TrainingLossChart';
 import trainingSessionService from '../services/trainingSessionService';
+import { API_BASE_URL_WITH_API } from '../config/api';
 
 interface LogEntry {
   timestamp: string;
@@ -55,7 +56,7 @@ export default function TuningProgress() {
       // If we have a session ID, use session-specific endpoint
       if (sessionId) {
         console.log(`Fetching logs for session: ${sessionId}`);
-        const response = await fetch(`https://finetune_engine.deepcite.in/api/training/${sessionId}/logs`);
+        const response = await fetch(`${API_BASE_URL_WITH_API}/training/${sessionId}/logs`);
         
         if (response.ok) {
           const data = await response.json();
@@ -69,7 +70,7 @@ export default function TuningProgress() {
       }
       
       // Fallback to global logs
-      const response = await fetch('https://finetune_engine.deepcite.in/api/logs');
+      const response = await fetch(`${API_BASE_URL_WITH_API}/logs`);
       if (!response.ok) {
         throw new Error(`Error fetching logs: ${response.statusText}`);
       }

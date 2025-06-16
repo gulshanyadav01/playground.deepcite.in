@@ -13,6 +13,7 @@ import { ConfigurationReviewModal } from '../components/ui/ConfigurationReviewMo
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
+import { API_BASE_URL } from '../config/api';
 
 export default function ConfigureTuning() {
   const navigate = useNavigate();
@@ -385,7 +386,7 @@ export default function ConfigureTuning() {
     toast.loading('Starting fine-tuning process...');
     
     // Make API call
-    fetch('https://finetune_engine.deepcite.in/finetune', {
+    fetch(`${API_BASE_URL}/finetune`, {
       method: 'POST', 
       headers: {
         'Content-Type': 'application/json'
