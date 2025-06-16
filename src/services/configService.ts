@@ -1,3 +1,5 @@
+import { API_BASE_URL_WITH_API } from '../config/api';
+
 // Configuration management service
 export interface ConfigMetadata {
   name: string;
@@ -39,7 +41,9 @@ export interface ConfigLoadResponse {
 }
 
 class ConfigService {
-  private baseUrl = 'https://finetune_engine.deepcite.in/api/configs';
+  private get baseUrl() {
+    return `${API_BASE_URL_WITH_API}/configs`;
+  }
 
   async saveConfiguration(request: ConfigSaveRequest): Promise<ConfigResponse> {
     try {

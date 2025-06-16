@@ -13,6 +13,7 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import trainingSessionService from '../../services/trainingSessionService';
 import { fileService, FileMetadata } from '../../services/fileService';
+import { API_BASE_URL } from '../../config/api';
 
 export default function ConfigureParameters() {
   const navigate = useNavigate();
@@ -313,7 +314,7 @@ export default function ConfigureParameters() {
     
     // Make API call to the file-based endpoint with file_id as query parameter
     try {
-      const response = await fetch(`https://finetune_engine.deepcite.in/finetune-with-file?file_id=${encodeURIComponent(selectedFileId)}`, {
+      const response = await fetch(`${API_BASE_URL}/finetune-with-file?file_id=${encodeURIComponent(selectedFileId)}`, {
         method: 'POST', 
         headers: {
           'Content-Type': 'application/json'

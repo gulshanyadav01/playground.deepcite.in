@@ -1,5 +1,5 @@
 // Use proxy in development, direct URL in production
-const BASE_URL = import.meta.env.DEV ? '/api' : 'https://finetune_engine.deepcite.in/api';
+import {API_BASE_URL, API_BASE_URL_WITH_API} from '../config/api'
 
 export interface Model {
   id: string;
@@ -42,7 +42,7 @@ class ChatApiService {
   private modelsData: any[] = []; // Store original model data for path mapping
 
   private async makeRequest(endpoint: string, options: RequestInit = {}, retries = 3): Promise<Response> {
-    const url = `${BASE_URL}${endpoint}`;
+    const url = `${API_BASE_URL_WITH_API}${endpoint}`;
     
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
@@ -435,7 +435,7 @@ class ChatApiService {
 
       console.log('Sending chat request:', requestPayload);
 
-      const response = await fetch(`${BASE_URL}/chat/stream`, {
+      const response = await fetch(`${API_BASE_URL}/chat/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

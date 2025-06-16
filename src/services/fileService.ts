@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, API_BASE_URL_WITH_API } from '../config/api';
 
 export interface FileMetadata {
   file_id: string;
@@ -52,7 +52,7 @@ export interface FilePreviewResponse {
 }
 
 class FileService {
-  private baseUrl = `${API_BASE_URL}/files`;
+  private baseUrl = `${API_BASE_URL_WITH_API}/files`;
 
   /**
    * Upload a file using multipart form data

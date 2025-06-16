@@ -7,6 +7,7 @@ import { Badge } from '../components/ui/Badge';
 import { Timer, CheckCircle2, ChevronDown, Play, Pause, FileDown, ArrowUpRight, Share2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TrainingLossChart from '../components/training/TrainingLossChart';
+import { API_BASE_URL_WITH_API } from '../config/api';
 
 interface LogEntry {
   timestamp: string;
@@ -63,7 +64,7 @@ export default function TrainingSession() {
     if (!sessionId) return;
     
     try {
-      const response = await fetch(`https://finetune_engine.deepcite.in/api/training/${sessionId}/status`);
+      const response = await fetch(`${API_BASE_URL_WITH_API}/training/${sessionId}/status`);
       if (!response.ok) {
         if (response.status === 404) {
           setError('Training session not found');
@@ -85,7 +86,7 @@ export default function TrainingSession() {
     if (!sessionId) return [];
     
     try {
-      const response = await fetch(`https://finetune_engine.deepcite.in/api/training/${sessionId}/logs`);
+      const response = await fetch(`${API_BASE_URL_WITH_API}/training/${sessionId}/logs`);
       if (!response.ok) {
         throw new Error(`Error fetching logs: ${response.statusText}`);
       }
