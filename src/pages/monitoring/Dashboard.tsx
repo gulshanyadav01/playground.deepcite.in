@@ -30,6 +30,27 @@ export default function MonitoringDashboard() {
     monitoringService.on('metrics', handleMetrics);
     monitoringService.on('alert', handleAlert);
 
+    // Load initial data from API
+    const loadInitialData = async () => {
+      try {
+        // Load current metrics
+        const currentMetrics = await monitoringService.getCurrentMetrics();
+        if (currentMetrics) {
+          setMetrics(currentMetrics);
+          setIsLoading(false);
+        }
+
+        // Load alerts
+        const alertsData = await monitoringService.getAlerts();
+        setAlerts(alertsData.active);
+      } catch (error) {
+        console.error('Error loading initial monitoring data:', error);
+        setIsLoading(false);
+      }
+    };
+
+    loadInitialData();
+
     // Cleanup
     return () => {
       monitoringService.off('metrics', handleMetrics);
