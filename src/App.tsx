@@ -8,6 +8,7 @@ import ModelQuery from './pages/ModelQuery';
 import TestData from './pages/evaluate/TestData';
 import Metrics from './pages/evaluate/Metrics';
 import Compare from './pages/evaluate/Compare';
+import MultiModelEvaluation from './pages/evaluate/MultiModelEvaluation';
 import MonitoringDashboard from './pages/monitoring/Dashboard';
 import Settings from './pages/Settings';
 
@@ -24,6 +25,7 @@ function App() {
           <Route path="test-data" element={<TestData />} />
           <Route path="metrics" element={<Metrics />} />
           <Route path="compare" element={<Compare />} />
+          <Route path="multi-model" element={<MultiModelEvaluation />} />
         </Route>
         <Route path="monitoring" element={<MonitoringDashboard />} />
         <Route path="settings" element={<Settings />} />
