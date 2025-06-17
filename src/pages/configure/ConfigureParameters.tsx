@@ -13,7 +13,7 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import trainingSessionService from '../../services/trainingSessionService';
 import { fileService, FileMetadata } from '../../services/fileService';
-import { API_BASE_URL } from '../../config/api';
+import { API_BASE_URL, API_BASE_URL_WITH_API } from '../../config/api';
 
 export default function ConfigureParameters() {
   const navigate = useNavigate();
