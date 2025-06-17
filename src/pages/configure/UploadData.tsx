@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Upload, FileText, AlertTriangle, Check, Eye, Trash2, Download, RefreshCw, Search, Filter } from 'lucide-react';
+import { Upload, FileText, AlertTriangle, Check, Eye, Trash2, Download, RefreshCw, Search, Filter, Settings } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { motion } from 'framer-motion';
 import { useConfigureContext } from './ConfigureContext';
 import { StepNavigation } from '../../components/ui/StepProgress';
-import { fileService, FileMetadata } from '../../services/fileService';
+import { fileService, FileMetadata, ColumnMapping } from '../../services/fileService';
+import ColumnMappingInterface from '../../components/ui/ColumnMappingInterface';
 
 interface FileWithPreview extends File {
   preview?: string;
@@ -33,6 +34,11 @@ export default function UploadData() {
   const [filterBy, setFilterBy] = useState<string>('');
   const [sortBy, setSortBy] = useState<string>('upload_date');
   const [searchTerm, setSearchTerm] = useState<string>('');
+
+  // Column mapping state
+  const [showColumnMapping, setShowColumnMapping] = useState(false);
+  const [mappingFileId, setMappingFileId] = useState<string | null>(null);
+  const [availableColumns, setAvailableColumns] = useState<string[]>([]);
 
   // Load existing files on component mount
   useEffect(() => {
@@ -204,6 +210,47 @@ export default function UploadData() {
     } catch (err: any) {
       setError(err.message || 'Failed to revalidate file');
     }
+  };
+
+  // Column mapping handlers
+  const openColumnMapping = async (fileId: string) => {
+    try {
+      const file = uploadedFiles.find(f => f.file_id === fileId);
+      if (!file) return;
+
+      setMappingFileId(fileId);
+      setAvailableColumns(file.validation_details.columns || []);
+      setShowColumnMapping(true);
+    } catch (err: any) {
+      setError(err.message || 'Failed to open column mapping');
+    }
+  };
+
+  const handleMappingComplete = async (mapping: ColumnMapping) => {
+    try {
+      setShowColumnMapping(false);
+      setMappingFileId(null);
+      
+      // Refresh the file list to get updated mapping status
+      await loadFiles();
+      
+      // Show success message
+      dispatch({
+        type: 'SET_VALIDATION_STATUS',
+        payload: {
+          status: 'valid',
+          messages: ['Column mapping saved successfully! File is ready for training.']
+        }
+      });
+    } catch (err: any) {
+      setError(err.message || 'Failed to complete mapping');
+    }
+  };
+
+  const handleMappingCancel = () => {
+    setShowColumnMapping(false);
+    setMappingFileId(null);
+    setAvailableColumns([]);
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -396,6 +443,19 @@ export default function UploadData() {
                             className="h-8 w-8 p-0"
                           >
                             <Download className="h-3 w-3" />
+                          </Button>
+                          {/* Column Mapping Button */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openColumnMapping(file.file_id);
+                            }}
+                            className="h-8 w-8 p-0"
+                            title="Configure column mapping"
+                          >
+                            <Settings className="h-3 w-3" />
                           </Button>
                           {file.validation_status === 'invalid' && (
                             <Button
@@ -676,6 +736,22 @@ export default function UploadData() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Column Mapping Modal */}
+      {showColumnMapping && mappingFileId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg max-w-6xl max-h-[90vh] overflow-auto w-full">
+            <div className="p-6">
+              <ColumnMappingInterface
+                fileId={mappingFileId}
+                availableColumns={availableColumns}
+                onMappingComplete={handleMappingComplete}
+                onCancel={handleMappingCancel}
+              />
             </div>
           </div>
         </div>

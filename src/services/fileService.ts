@@ -1,5 +1,24 @@
 import { API_BASE_URL, API_BASE_URL_WITH_API } from '../config/api';
 
+export interface ColumnConfig {
+  column_name: string;
+  role: 'primary' | 'context' | 'metadata';
+  weight?: number;
+  format_type?: 'text' | 'json' | 'list' | 'table';
+  custom_template?: string;
+}
+
+export interface ColumnMapping {
+  instruction_columns: ColumnConfig[];
+  instruction_template: string;
+  output_columns: ColumnConfig[];
+  output_template: string;
+  ignored_columns?: string[];
+  mapping_name?: string;
+  description?: string;
+  created_at?: string;
+}
+
 export interface FileMetadata {
   file_id: string;
   display_name: string;
@@ -19,9 +38,16 @@ export interface FileMetadata {
     sample_data: any[];
     null_counts: Record<string, number>;
     issues: string[];
+    suggested_instruction_columns?: string[];
+    suggested_output_columns?: string[];
+    column_types?: Record<string, string>;
+    column_stats?: Record<string, any>;
   };
   tags: string[];
   used_in_sessions: string[];
+  column_mapping?: ColumnMapping;
+  has_mapping?: boolean;
+  mapping_confidence?: number;
 }
 
 export interface FileUploadResponse {
@@ -365,6 +391,134 @@ class FileService {
       default:
         return '❓';
     }
+  }
+
+  /**
+   * Detect columns and get AI suggestions for mapping
+   */
+  async detectColumns(fileId: string, sampleSize: number = 100): Promise<{
+    success: boolean;
+    file_id: string;
+    available_columns: string[];
+    suggested_mapping: ColumnMapping;
+    confidence_scores: Record<string, any>;
+    column_analysis: Record<string, any>;
+  }> {
+    const response = await fetch(`${this.baseUrl}/${fileId}/detect-columns`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        file_id: fileId,
+        sample_size: sampleSize,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to detect columns');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Save column mapping configuration for a file
+   */
+  async saveColumnMapping(fileId: string, columnMapping: ColumnMapping): Promise<{
+    success: boolean;
+    message: string;
+    file_id: string;
+    validation_status?: string;
+  }> {
+    const response = await fetch(`${this.baseUrl}/${fileId}/map-columns`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        file_id: fileId,
+        column_mapping: columnMapping,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to save column mapping');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Preview how data will look with applied column mapping
+   */
+  async previewMappedData(fileId: string, columnMapping: ColumnMapping, limit: number = 10): Promise<{
+    success: boolean;
+    file_id: string;
+    preview_data: Array<{ instruction: string; input: string; output: string }>;
+    total_rows: number;
+    showing_rows: number;
+    mapping_applied: ColumnMapping;
+  }> {
+    const response = await fetch(`${this.baseUrl}/${fileId}/preview-mapped`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        file_id: fileId,
+        column_mapping: columnMapping,
+        limit,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to preview mapped data');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get current column mapping for a file
+   */
+  async getFileMapping(fileId: string): Promise<{
+    success: boolean;
+    file_id: string;
+    column_mapping: ColumnMapping;
+    has_mapping: boolean;
+  }> {
+    const response = await fetch(`${this.baseUrl}/${fileId}/mapping`);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to get file mapping');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Remove column mapping from a file
+   */
+  async removeFileMapping(fileId: string): Promise<{
+    success: boolean;
+    message: string;
+    file_id: string;
+  }> {
+    const response = await fetch(`${this.baseUrl}/${fileId}/mapping`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to remove file mapping');
+    }
+
+    return response.json();
   }
 }
 
