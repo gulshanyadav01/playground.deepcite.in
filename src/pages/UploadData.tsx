@@ -66,7 +66,7 @@ export default function UploadData() {
       'text/plain': ['.txt'],
     },
     maxFiles: 5,
-    maxSize: 50 * 1024 * 1024, // 50MB
+    maxSize: 500 * 1024 * 1024, // 500MB
     onDrop: async (acceptedFiles, rejectedFiles) => {
       setFiles([...files, ...acceptedFiles]);
 

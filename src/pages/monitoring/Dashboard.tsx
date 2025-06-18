@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Clock, Zap, AlertTriangle, DollarSign, Activity, Cpu, HardDrive, Settings, RefreshCw } from 'lucide-react';
+import { Clock, Zap, AlertTriangle, DollarSign, Activity, Cpu, HardDrive, Settings, RefreshCw, MemoryStick } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -294,7 +294,7 @@ export default function MonitoringDashboard() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <HardDrive className="h-4 w-4 text-gray-500" />
-                    <span className="text-sm font-medium">Memory</span>
+                    <span className="text-sm font-medium">CPU Memory</span>
                   </div>
                   <span className="text-sm text-gray-600 dark:text-gray-400">
                     {metrics?.systemHealth.memory || 0}%
@@ -322,6 +322,31 @@ export default function MonitoringDashboard() {
                   <div 
                     className="bg-warning-500 h-2 rounded-full transition-all duration-300"
                     style={{ width: `${metrics?.systemHealth.gpu || 0}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <MemoryStick className="h-4 w-4 text-gray-500" />
+                    <span className="text-sm font-medium">GPU Memory</span>
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">
+                      {metrics?.systemHealth.gpuMemory || 0}%
+                    </span>
+                    {metrics?.systemHealth.gpuMemoryUsed && metrics?.systemHealth.gpuMemoryTotal && (
+                      <span className="text-xs text-gray-500 dark:text-gray-500">
+                        {(metrics.systemHealth.gpuMemoryUsed / 1024).toFixed(1)}GB / {(metrics.systemHealth.gpuMemoryTotal / 1024).toFixed(1)}GB
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                  <div 
+                    className="bg-purple-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${metrics?.systemHealth.gpuMemory || 0}%` }}
                   />
                 </div>
               </div>
