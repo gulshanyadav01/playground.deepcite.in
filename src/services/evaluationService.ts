@@ -1,5 +1,6 @@
 // Use proxy in development, direct URL in production
-const API_BASE_URL = import.meta.env.DEV ? '/api' : 'https://finetune_engine.deepcite.in';
+// const API_BASE_URL = import.meta.env.DEV ? '/api' : 'https://finetune_engine.deepcite.in';
+import { API_BASE_URL, API_BASE_URL_WITH_API } from "../config/api";
 
 export interface EvaluationJob {
   id: string;
@@ -66,7 +67,7 @@ class EvaluationService {
     testData: any[],
     batchSize: number = 50
   ): Promise<EvaluationResponse> {
-    const response = await fetch(`${this.baseUrl}/evaluate/predict`, {
+    const response = await fetch(`${API_BASE_URL}/evaluate/predict`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -99,7 +100,7 @@ class EvaluationService {
     formData.append('model_path', modelPath);
     formData.append('batch_size', batchSize.toString());
 
-    const response = await fetch(`${this.baseUrl}/evaluate/predict-file`, {
+    const response = await fetch(`${API_BASE_URL}/evaluate/predict-file`, {
       method: 'POST',
       body: formData,
     });
@@ -121,7 +122,7 @@ class EvaluationService {
     fileType: 'csv' | 'json' | 'jsonl',
     batchSize: number = 50
   ): Promise<EvaluationResponse> {
-    const response = await fetch(`${this.baseUrl}/evaluate/predict-file`, {
+    const response = await fetch(`${API_BASE_URL}/evaluate/predict-file`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -146,7 +147,7 @@ class EvaluationService {
    * Get status of an evaluation job
    */
   async getJobStatus(jobId: string): Promise<EvaluationStatusResponse> {
-    const response = await fetch(`${this.baseUrl}/evaluate/status/${jobId}`);
+    const response = await fetch(`${API_BASE_URL}/evaluate/status/${jobId}`);
 
     if (!response.ok) {
       const error = await response.json();
@@ -160,7 +161,7 @@ class EvaluationService {
    * Get results of a completed evaluation job
    */
   async getJobResults(jobId: string): Promise<EvaluationResultsResponse> {
-    const response = await fetch(`${this.baseUrl}/evaluate/results/${jobId}`);
+    const response = await fetch(`${API_BASE_URL}/evaluate/results/${jobId}`);
 
     if (!response.ok) {
       const error = await response.json();
@@ -174,7 +175,7 @@ class EvaluationService {
    * List all evaluation jobs
    */
   async listJobs(): Promise<{ jobs: EvaluationJob[]; total: number }> {
-    const response = await fetch(`${this.baseUrl}/evaluate/jobs`);
+    const response = await fetch(`${API_BASE_URL}/evaluate/jobs`);
 
     if (!response.ok) {
       const error = await response.json();
@@ -188,7 +189,7 @@ class EvaluationService {
    * Delete an evaluation job
    */
   async deleteJob(jobId: string): Promise<{ job_id: string; status: string; message: string }> {
-    const response = await fetch(`${this.baseUrl}/evaluate/jobs/${jobId}`, {
+    const response = await fetch(`${API_BASE_URL}/evaluate/jobs/${jobId}`, {
       method: 'DELETE',
     });
 
