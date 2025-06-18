@@ -214,7 +214,7 @@ export default function UploadData() {
       'application/jsonl': ['.jsonl'],
     },
     maxFiles: 1,
-    maxSize: 50 * 1024 * 1024, // 50MB
+    maxSize: 500 * 1024 * 1024, // 50MB
     onDrop: async (acceptedFiles, rejectedFiles) => {
       if (acceptedFiles.length > 0) {
         await uploadFile(acceptedFiles[0]);
