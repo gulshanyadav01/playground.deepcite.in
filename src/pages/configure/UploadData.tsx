@@ -1,761 +1,441 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
-import { Upload, FileText, AlertTriangle, Check, Eye, Trash2, Download, RefreshCw, Search, Filter, Settings } from 'lucide-react';
-import { useDropzone } from 'react-dropzone';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useConfigureContext } from './ConfigureContext';
-import { StepNavigation } from '../../components/ui/StepProgress';
-import { fileService, FileMetadata, ColumnMapping } from '../../services/fileService';
+import { Button } from '../../components/ui/Button';
+import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import ColumnMappingInterface from '../../components/ui/ColumnMappingInterface';
+import { 
+  Upload, 
+  FileText, 
+  CheckCircle, 
+  AlertCircle, 
+  ArrowRight,
+  Download,
+  BarChart3
+} from 'lucide-react';
+import { 
+  fileService, 
+  FileUploadResponse, 
+  ColumnMapping, 
+  ColumnInfo,
+  TrainingExample,
+  ProcessedFileResponse
+} from '../../services/fileService';
 
-interface FileWithPreview extends File {
-  preview?: string;
+interface UploadDataProps {
+  onNext: (data: { fileId: string; mapping: ColumnMapping; processedData?: TrainingExample[] }) => void;
+  onBack: () => void;
 }
 
-export default function UploadData() {
-  const navigate = useNavigate();
-  const { state, dispatch, completeCurrentStep } = useConfigureContext();
-  const { validationStatus, validationMessages = [] } = state;
+type UploadStep = 'upload' | 'mapping' | 'processing' | 'complete';
 
-  // File management state
-  const [uploadedFiles, setUploadedFiles] = useState<FileMetadata[]>([]);
-  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [previewData, setPreviewData] = useState<any[]>([]);
-  const [showPreview, setShowPreview] = useState(false);
-  const [previewFileId, setPreviewFileId] = useState<string | null>(null);
-  
-  // Filter and search state
-  const [filterBy, setFilterBy] = useState<string>('');
-  const [sortBy, setSortBy] = useState<string>('upload_date');
-  const [searchTerm, setSearchTerm] = useState<string>('');
-
-  // Column mapping state
-  const [showColumnMapping, setShowColumnMapping] = useState(false);
-  const [mappingFileId, setMappingFileId] = useState<string | null>(null);
+export const UploadData: React.FC<UploadDataProps> = ({ onNext, onBack }) => {
+  const [currentStep, setCurrentStep] = useState<UploadStep>('upload');
+  const [uploadedFile, setUploadedFile] = useState<FileUploadResponse | null>(null);
+  const [columnInfo, setColumnInfo] = useState<Record<string, ColumnInfo>>({});
   const [availableColumns, setAvailableColumns] = useState<string[]>([]);
+  const [savedMapping, setSavedMapping] = useState<ColumnMapping | null>(null);
+  const [processedData, setProcessedData] = useState<ProcessedFileResponse | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Load existing files on component mount
-  useEffect(() => {
-    loadFiles();
-  }, [filterBy, sortBy]);
-
-  const loadFiles = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const response = await fileService.listFiles(filterBy || undefined, sortBy, true);
-      setUploadedFiles(response.files);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load files');
-      console.error('Error loading files:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const uploadFile = async (file: File) => {
+  const handleFileUpload = async (file: File) => {
     try {
       setIsUploading(true);
-      setUploadProgress(0);
       setError(null);
-
-      console.log('Starting file upload:', {
-        fileName: file.name,
-        fileSize: file.size,
-        fileType: file.type
-      });
-
-      // Simulate upload progress
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          const next = prev + 10;
-          return next >= 90 ? 90 : next;
-        });
-      }, 200);
-
-      console.log('Calling fileService.uploadFile...');
-      const response = await fileService.uploadFile(file);
-      console.log('Upload response:', response);
       
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-
-      if (response.success && response.metadata) {
-        console.log('Upload successful, metadata:', response.metadata);
+      const result = await fileService.uploadFile(file, file.name);
+      
+      if (result.success && result.file_id) {
+        setUploadedFile(result);
         
-        // Add the new file to the list
-        setUploadedFiles(prev => [response.metadata!, ...prev]);
+        // Get column information
+        const columnInfoResult = await fileService.getColumnInfo(result.file_id);
+        setColumnInfo(columnInfoResult.column_info);
+        setAvailableColumns(columnInfoResult.available_columns);
         
-        // Auto-select the uploaded file if it's valid
-        if (response.metadata.validation_status === 'valid') {
-          setSelectedFileId(response.metadata.file_id);
-          dispatch({ 
-            type: 'SET_VALIDATION_STATUS', 
-            payload: { 
-              status: 'valid', 
-              messages: [`File '${response.metadata.display_name}' uploaded and validated successfully`] 
-            }
-          });
-        } else {
-          dispatch({ 
-            type: 'SET_VALIDATION_STATUS', 
-            payload: { 
-              status: 'invalid', 
-              messages: response.metadata.validation_details.issues || ['File validation failed'] 
-            }
-          });
-        }
+        setCurrentStep('mapping');
       } else {
-        console.error('Upload response indicates failure:', response);
-        setError(response.message || 'Upload failed - no metadata returned');
+        throw new Error(result.message || 'Upload failed');
       }
     } catch (err: any) {
-      console.error('Upload error:', err);
-      console.error('Error details:', {
-        message: err.message,
-        stack: err.stack,
-        name: err.name
-      });
-      
       setError(err.message || 'Failed to upload file');
-      dispatch({ 
-        type: 'SET_VALIDATION_STATUS', 
-        payload: { 
-          status: 'invalid', 
-          messages: [err.message || 'Upload failed'] 
-        }
-      });
     } finally {
       setIsUploading(false);
-      setUploadProgress(0);
-    }
-  };
-
-  const selectFile = (fileId: string) => {
-    const file = uploadedFiles.find(f => f.file_id === fileId);
-    if (file && file.validation_status === 'valid') {
-      setSelectedFileId(fileId);
-      dispatch({ 
-        type: 'SET_VALIDATION_STATUS', 
-        payload: { 
-          status: 'valid', 
-          messages: [`Selected file: ${file.display_name} (${file.validation_details.total_rows} rows)`] 
-        }
-      });
-    }
-  };
-
-  const deleteFile = async (fileId: string) => {
-    try {
-      await fileService.deleteFile(fileId);
-      setUploadedFiles(prev => prev.filter(f => f.file_id !== fileId));
-      
-      if (selectedFileId === fileId) {
-        setSelectedFileId(null);
-        dispatch({ 
-          type: 'SET_VALIDATION_STATUS', 
-          payload: { status: 'idle', messages: [] }
-        });
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete file');
-    }
-  };
-
-  const previewFile = async (fileId: string) => {
-    try {
-      const response = await fileService.getFilePreview(fileId, 10);
-      setPreviewData(response.preview_data);
-      setPreviewFileId(fileId);
-      setShowPreview(true);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load file preview');
-    }
-  };
-
-  const downloadFile = async (fileId: string) => {
-    try {
-      const blob = await fileService.downloadFile(fileId);
-      const file = uploadedFiles.find(f => f.file_id === fileId);
-      
-      // Create download link
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = file?.original_filename || 'download';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (err: any) {
-      setError(err.message || 'Failed to download file');
-    }
-  };
-
-  const revalidateFile = async (fileId: string) => {
-    try {
-      const response = await fileService.revalidateFile(fileId);
-      // Update the file in the list
-      setUploadedFiles(prev => prev.map(f => 
-        f.file_id === fileId 
-          ? { ...f, validation_status: response.validation_status as any, validation_details: response.validation_details }
-          : f
-      ));
-    } catch (err: any) {
-      setError(err.message || 'Failed to revalidate file');
-    }
-  };
-
-  // Column mapping handlers
-  const openColumnMapping = async (fileId: string) => {
-    try {
-      const file = uploadedFiles.find(f => f.file_id === fileId);
-      if (!file) return;
-
-      setMappingFileId(fileId);
-      setAvailableColumns(file.validation_details.columns || []);
-      setShowColumnMapping(true);
-    } catch (err: any) {
-      setError(err.message || 'Failed to open column mapping');
     }
   };
 
   const handleMappingComplete = async (mapping: ColumnMapping) => {
     try {
-      setShowColumnMapping(false);
-      setMappingFileId(null);
+      setSavedMapping(mapping);
+      setCurrentStep('processing');
+      setIsProcessing(true);
+      setError(null);
       
-      // Refresh the file list to get updated mapping status
-      await loadFiles();
+      if (!uploadedFile?.file_id) {
+        throw new Error('No file uploaded');
+      }
       
-      // Show success message
-      dispatch({
-        type: 'SET_VALIDATION_STATUS',
-        payload: {
-          status: 'valid',
-          messages: ['Column mapping saved successfully! File is ready for training.']
-        }
-      });
+      // Process the complete file
+      const result = await fileService.processCompleteFile(uploadedFile.file_id, mapping);
+      setProcessedData(result);
+      setCurrentStep('complete');
+      
     } catch (err: any) {
-      setError(err.message || 'Failed to complete mapping');
+      setError(err.message || 'Failed to process file');
+      setCurrentStep('mapping');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleMappingCancel = () => {
-    setShowColumnMapping(false);
-    setMappingFileId(null);
-    setAvailableColumns([]);
+  const handleDownloadData = () => {
+    if (processedData) {
+      fileService.downloadTrainingData(
+        processedData.processed_data,
+        `${uploadedFile?.metadata?.display_name || 'training_data'}.json`
+      );
+    }
   };
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    accept: {
-      'application/json': ['.json'],
-      // 'text/csv': ['.csv'],
-      'multipart/form-data': ['.csv'],
-      'application/jsonl': ['.jsonl'],
-    },
-    maxFiles: 1,
-    maxSize: 50 * 1024 * 1024, // 50MB
-    onDrop: async (acceptedFiles, rejectedFiles) => {
-      if (acceptedFiles.length > 0) {
-        await uploadFile(acceptedFiles[0]);
-      }
-      
-      if (rejectedFiles.length > 0) {
-        const errorMessages = rejectedFiles.map(file => {
-          if (file.errors[0].code === 'file-too-large') {
-            return `${file.file.name} is too large (max 50MB)`;
-          }
-          if (file.errors[0].code === 'file-invalid-type') {
-            return `${file.file.name} has an unsupported file type`;
-          }
-          return `${file.file.name} could not be uploaded`;
-        });
-        setError(errorMessages.join(', '));
-      }
-    },
-  });
+  const handleDownloadStats = () => {
+    if (processedData) {
+      fileService.downloadProcessingStats(
+        processedData.processing_stats,
+        `${uploadedFile?.metadata?.display_name || 'processing'}_stats.json`
+      );
+    }
+  };
 
-  // Filter files based on search term
-  const filteredFiles = (uploadedFiles || []).filter(file => 
-    file.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    file.original_filename.toLowerCase().includes(searchTerm.toLowerCase())
+  const handleContinue = () => {
+    if (uploadedFile?.file_id && savedMapping) {
+      onNext({
+        fileId: uploadedFile.file_id,
+        mapping: savedMapping,
+        processedData: processedData?.processed_data
+      });
+    }
+  };
+
+  const FileUploadStep = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center">
+          <Upload className="h-5 w-5 mr-2" />
+          Upload Training Data
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="text-center">
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
+            Upload your CSV, JSON, or JSONL file containing training data
+          </p>
+          
+          <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8">
+            <input
+              type="file"
+              accept=".csv,.json,.jsonl"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  handleFileUpload(file);
+                }
+              }}
+              className="hidden"
+              id="file-upload"
+              disabled={isUploading}
+            />
+            <label
+              htmlFor="file-upload"
+              className={`cursor-pointer flex flex-col items-center ${
+                isUploading ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+            >
+              <Upload className="h-12 w-12 text-gray-400 mb-4" />
+              <span className="text-lg font-medium text-gray-900 dark:text-gray-100">
+                {isUploading ? 'Uploading...' : 'Choose file to upload'}
+              </span>
+              <span className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                Supports CSV, JSON, and JSONL files
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+          <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">
+            Supported File Formats:
+          </h4>
+          <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
+            <li>• <strong>CSV:</strong> Comma-separated values with column headers</li>
+            <li>• <strong>JSON:</strong> Array of objects or single object</li>
+            <li>• <strong>JSONL:</strong> JSON Lines format (one JSON object per line)</li>
+          </ul>
+        </div>
+      </CardContent>
+    </Card>
   );
 
-  // Handle navigation
-  const handlePrevious = () => {
-    navigate('/configure/model');
-  };
+  const ProcessingStep = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center">
+          <BarChart3 className="h-5 w-5 mr-2" />
+          Processing File
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
+            Processing your data...
+          </h3>
+          <p className="text-gray-600 dark:text-gray-400">
+            Applying column mapping and generating training examples
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
 
-  const handleNext = () => {
-    if (selectedFileId) {
-      // Store the selected file ID in context for use in training
-      dispatch({ type: 'SET_SELECTED_FILE_ID', payload: selectedFileId });
-      completeCurrentStep();
-      navigate('/configure/parameters');
-    }
-  };
-
-  return (
+  const CompletionStep = () => (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Upload Training Data</h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">
-          Upload your training data files or select from previously uploaded files
-        </p>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <CheckCircle className="h-5 w-5 mr-2 text-green-500" />
+            Processing Complete
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {processedData && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                    {processedData.total_examples.toLocaleString()}
+                  </div>
+                  <div className="text-sm text-green-800 dark:text-green-200">
+                    Training Examples
+                  </div>
+                </div>
+                
+                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                    {processedData.processing_stats.success_rate.toFixed(1)}%
+                  </div>
+                  <div className="text-sm text-blue-800 dark:text-blue-200">
+                    Success Rate
+                  </div>
+                </div>
+                
+                <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
+                  <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                    {processedData.processing_stats.output_types.json_outputs > 0 ? 'Mixed' : 'Text'}
+                  </div>
+                  <div className="text-sm text-purple-800 dark:text-purple-200">
+                    Output Format
+                  </div>
+                </div>
+              </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          {/* Existing Files Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Your Training Files ({uploadedFiles.length})</span>
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+                <h4 className="font-medium mb-2">Processing Statistics:</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-600 dark:text-gray-400">Input Rows:</span>
+                    <span className="ml-2 font-medium">
+                      {processedData.processing_stats.total_input_rows.toLocaleString()}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600 dark:text-gray-400">Valid Outputs:</span>
+                    <span className="ml-2 font-medium">
+                      {processedData.processing_stats.valid_output_rows.toLocaleString()}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600 dark:text-gray-400">Skipped Rows:</span>
+                    <span className="ml-2 font-medium">
+                      {processedData.processing_stats.skipped_rows.toLocaleString()}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600 dark:text-gray-400">Avg Instruction Length:</span>
+                    <span className="ml-2 font-medium">
+                      {Math.round(processedData.processing_stats.instruction_stats.avg_length)} chars
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <Button
+                  onClick={handleDownloadData}
+                  className="flex items-center"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download Training Data
+                </Button>
+                
                 <Button
                   variant="outline"
-                  size="sm"
-                  onClick={loadFiles}
-                  disabled={isLoading}
+                  onClick={handleDownloadStats}
+                  className="flex items-center"
                 >
-                  <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                  <BarChart3 className="h-4 w-4 mr-2" />
+                  Download Statistics
                 </Button>
-              </CardTitle>
-              <CardDescription>
-                Select an existing file or upload a new one
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Search and Filter Controls */}
-              <div className="flex flex-col sm:flex-row gap-4">
-                <div className="flex-1">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Search files..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <select
-                    value={filterBy}
-                    onChange={(e) => setFilterBy(e.target.value)}
-                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                  >
-                    <option value="">All Files</option>
-                    <option value="valid">Valid Only</option>
-                    <option value="invalid">Invalid Only</option>
-                    <option value="json">JSON Files</option>
-                    <option value="csv">CSV Files</option>
-                    <option value="jsonl">JSONL Files</option>
-                  </select>
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                  >
-                    <option value="upload_date">Recent First</option>
-                    <option value="name">Name</option>
-                    <option value="usage_count">Most Used</option>
-                    <option value="file_size">File Size</option>
-                  </select>
-                </div>
               </div>
-
-              {/* Files Grid */}
-              {isLoading ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
-                  <p className="mt-2 text-sm text-gray-500">Loading files...</p>
-                </div>
-              ) : filteredFiles.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {filteredFiles.map((file) => (
-                    <motion.div
-                      key={file.file_id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className={`p-4 border rounded-lg cursor-pointer transition-all ${
-                        selectedFileId === file.file_id
-                          ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                      }`}
-                      onClick={() => selectFile(file.file_id)}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start space-x-3 flex-1">
-                          <div className="text-2xl">
-                            {fileService.getFileTypeIcon(file.file_type)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                              {file.display_name}
-                            </h4>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                              {file.original_filename}
-                            </p>
-                            <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
-                              <span>{fileService.formatFileSize(file.file_size)}</span>
-                              <span>{file.validation_details.total_rows} rows</span>
-                              <span className={fileService.getValidationStatusColor(file.validation_status)}>
-                                {fileService.getValidationStatusIcon(file.validation_status)} {file.validation_status}
-                              </span>
-                            </div>
-                            <p className="text-xs text-gray-400 mt-1">
-                              Uploaded {fileService.formatDate(file.upload_date)}
-                            </p>
-                            {file.usage_count > 0 && (
-                              <p className="text-xs text-blue-600 dark:text-blue-400">
-                                Used {file.usage_count} time{file.usage_count !== 1 ? 's' : ''}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex flex-col space-y-1">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              previewFile(file.file_id);
-                            }}
-                            className="h-8 w-8 p-0"
-                          >
-                            <Eye className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              downloadFile(file.file_id);
-                            }}
-                            className="h-8 w-8 p-0"
-                          >
-                            <Download className="h-3 w-3" />
-                          </Button>
-                          {/* Column Mapping Button */}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openColumnMapping(file.file_id);
-                            }}
-                            className="h-8 w-8 p-0"
-                            title="Configure column mapping"
-                          >
-                            <Settings className="h-3 w-3" />
-                          </Button>
-                          {file.validation_status === 'invalid' && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                revalidateFile(file.file_id);
-                              }}
-                              className="h-8 w-8 p-0"
-                            >
-                              <RefreshCw className="h-3 w-3" />
-                            </Button>
-                          )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteFile(file.file_id);
-                            }}
-                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">No files found. Upload your first training file below.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Upload New File Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Upload New Training Data</CardTitle>
-              <CardDescription>
-                Upload JSON, CSV, or JSONL files containing instruction-response pairs
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* File Upload Area */}
-              <div 
-                {...getRootProps()} 
-                className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-                  isDragActive 
-                    ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/10' 
-                    : 'border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600'
-                }`}
-              >
-                <input {...getInputProps()} />
-                <div className="flex flex-col items-center justify-center space-y-4">
-                  <div className="p-4 rounded-full bg-primary-100 dark:bg-primary-900/20">
-                    <Upload className="h-8 w-8 text-primary-600 dark:text-primary-400" />
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-lg font-medium">
-                      {isDragActive ? 'Drop the file here' : 'Drag & drop a file here or click to browse'}
-                    </p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      JSON, CSV, or JSONL files, up to 50MB
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Upload Progress */}
-              {isUploading && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Uploading and validating...</span>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">{uploadProgress}%</span>
-                  </div>
-                  <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary-500 transition-all duration-300 ease-in-out"
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Data Format Guidelines */}
-              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                <h4 className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">
-                  📋 Data Format Requirements
-                </h4>
-                <div className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
-                  <p><strong>JSON:</strong> Array of objects with "instruction" and "output" fields</p>
-                  <p><strong>CSV:</strong> Columns named "instruction" and "output"</p>
-                  <p><strong>JSONL:</strong> One JSON object per line with instruction/output fields</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Error Display */}
-          {error && (
-            <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <div className="flex">
-                <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0" />
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-red-800 dark:text-red-200">Error</h3>
-                  <p className="text-sm text-red-700 dark:text-red-300 mt-1">{error}</p>
-                </div>
-                <button
-                  onClick={() => setError(null)}
-                  className="ml-auto text-red-500 hover:text-red-700"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
+            </>
           )}
+        </CardContent>
+      </Card>
 
-          {/* Validation Messages */}
-          {validationMessages.length > 0 && (
-            <div className={`p-4 rounded-lg ${
-              validationStatus === 'valid' 
-                ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200' 
-                : 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200'
-            }`}>
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  {validationStatus === 'valid' ? (
-                    <Check className="h-5 w-5 text-green-500" />
-                  ) : (
-                    <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                  )}
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium">
-                    {validationStatus === 'valid' ? 'File Selected' : 'Validation Issues'}
-                  </h3>
-                  <div className="mt-2 text-sm">
-                    <ul className="list-disc pl-5 space-y-1">
-                      {validationMessages.map((message, index) => (
-                        <li key={index}>{message}</li>
-                      ))}
-                    </ul>
+      {/* Sample Data Preview */}
+      {processedData && processedData.processed_data.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Sample Training Examples</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {processedData.processed_data.slice(0, 3).map((example, index) => (
+                <div key={index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <div>
+                      <h4 className="font-medium text-sm text-blue-600 dark:text-blue-400 mb-2">
+                        Instruction:
+                      </h4>
+                      <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded text-sm">
+                        {example.instruction}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-sm text-green-600 dark:text-green-400 mb-2">
+                        Input:
+                      </h4>
+                      <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded text-sm">
+                        {typeof example.input === 'string' 
+                          ? example.input || '(empty)'
+                          : JSON.stringify(example.input, null, 2)
+                        }
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-sm text-orange-600 dark:text-orange-400 mb-2">
+                        Output:
+                      </h4>
+                      <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded text-sm">
+                        {typeof example.output === 'string' 
+                          ? example.output
+                          : JSON.stringify(example.output, null, 2)
+                        }
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ))}
             </div>
-          )}
-
-          {/* Navigation */}
-          <StepNavigation
-            currentStep={2}
-            totalSteps={3}
-            onPrevious={handlePrevious}
-            onNext={handleNext}
-            canProceed={!!selectedFileId}
-            nextLabel="Next: Configure Training"
-          />
-        </div>
-
-        <div>
-          <Card>
-            <CardHeader>
-              <CardTitle>Data Upload Guide</CardTitle>
-              <CardDescription>
-                Tips for preparing your training data
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Supported Formats</h4>
-                  <ul className="space-y-3 text-sm">
-                    <li className="flex items-start gap-2">
-                      <span className="w-5 h-5 rounded-full bg-primary-100 dark:bg-primary-900/20 flex items-center justify-center flex-shrink-0">
-                        <span className="text-primary-600 dark:text-primary-400 text-xs">J</span>
-                      </span>
-                      <div>
-                        <p className="font-medium">JSON Files</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          Array of instruction-response objects
-                        </p>
-                      </div>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="w-5 h-5 rounded-full bg-primary-100 dark:bg-primary-900/20 flex items-center justify-center flex-shrink-0">
-                        <span className="text-primary-600 dark:text-primary-400 text-xs">C</span>
-                      </span>
-                      <div>
-                        <p className="font-medium">CSV Files</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          Columns: instruction, output
-                        </p>
-                      </div>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="w-5 h-5 rounded-full bg-primary-100 dark:bg-primary-900/20 flex items-center justify-center flex-shrink-0">
-                        <span className="text-primary-600 dark:text-primary-400 text-xs">L</span>
-                      </span>
-                      <div>
-                        <p className="font-medium">JSONL Files</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          One JSON object per line
-                        </p>
-                      </div>
-                    </li>
-                  </ul>
-                </div>
-
-                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md">
-                  <h4 className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">
-                    📋 Best Practices
-                  </h4>
-                  <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-2 pl-4 list-disc">
-                    <li>Use diverse, high-quality examples</li>
-                    <li>Aim for 100+ training examples</li>
-                    <li>Keep instructions clear and specific</li>
-                    <li>Ensure consistent formatting</li>
-                  </ul>
-                </div>
-
-                {selectedFileId && (
-                  <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-md">
-                    <h4 className="text-sm font-medium text-green-900 dark:text-green-100 mb-2">
-                      ✅ File Selected
-                    </h4>
-                    <p className="text-sm text-green-800 dark:text-green-200">
-                      Ready to proceed with training configuration
-                    </p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* File Preview Modal */}
-      {showPreview && previewFileId && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-4xl max-h-[80vh] overflow-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-medium">File Preview</h3>
-              <button
-                onClick={() => setShowPreview(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                ×
-              </button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-700">
-                  <tr>
-                    {previewData.length > 0 && Object.keys(previewData[0]).map((key) => (
-                      <th key={key} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        {key}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                  {previewData.map((row, index) => (
-                    <tr key={index}>
-                      {Object.values(row).map((value: any, cellIndex) => (
-                        <td key={cellIndex} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                          {typeof value === 'string' && value.length > 100 
-                            ? value.substring(0, 100) + '...' 
-                            : String(value)
-                          }
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Column Mapping Modal */}
-      {showColumnMapping && mappingFileId && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg max-w-6xl max-h-[90vh] overflow-auto w-full">
-            <div className="p-6">
-              <ColumnMappingInterface
-                fileId={mappingFileId}
-                availableColumns={availableColumns}
-                onMappingComplete={handleMappingComplete}
-                onCancel={handleMappingCancel}
-              />
-            </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
-}
+
+  return (
+    <div className="space-y-6">
+      {/* Progress Indicator */}
+      <div className="flex items-center justify-center space-x-4 mb-8">
+        {[
+          { step: 'upload', label: 'Upload', icon: Upload },
+          { step: 'mapping', label: 'Map Columns', icon: FileText },
+          { step: 'processing', label: 'Process', icon: BarChart3 },
+          { step: 'complete', label: 'Complete', icon: CheckCircle }
+        ].map(({ step, label, icon: Icon }, index) => {
+          const isActive = currentStep === step;
+          const isCompleted = ['upload', 'mapping', 'processing', 'complete'].indexOf(currentStep) > index;
+          
+          return (
+            <React.Fragment key={step}>
+              <div className={`flex items-center space-x-2 ${
+                isActive ? 'text-primary-600' : isCompleted ? 'text-green-600' : 'text-gray-400'
+              }`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  isActive ? 'bg-primary-100 dark:bg-primary-900/20' : 
+                  isCompleted ? 'bg-green-100 dark:bg-green-900/20' : 
+                  'bg-gray-100 dark:bg-gray-800'
+                }`}>
+                  <Icon className="h-4 w-4" />
+                </div>
+                <span className="text-sm font-medium">{label}</span>
+              </div>
+              {index < 3 && (
+                <ArrowRight className={`h-4 w-4 ${
+                  isCompleted ? 'text-green-600' : 'text-gray-400'
+                }`} />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+          <div className="flex items-center">
+            <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
+            <span className="text-red-700 dark:text-red-300">{error}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Step Content */}
+      <motion.div
+        key={currentStep}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
+        {currentStep === 'upload' && <FileUploadStep />}
+        
+        {currentStep === 'mapping' && uploadedFile && (
+          <ColumnMappingInterface
+            fileId={uploadedFile.file_id!}
+            availableColumns={availableColumns}
+            columnInfo={columnInfo}
+            onMappingComplete={handleMappingComplete}
+            onCancel={() => setCurrentStep('upload')}
+          />
+        )}
+        
+        {currentStep === 'processing' && <ProcessingStep />}
+        
+        {currentStep === 'complete' && <CompletionStep />}
+      </motion.div>
+
+      {/* Navigation */}
+      <div className="flex justify-between">
+        <Button 
+          variant="outline" 
+          onClick={onBack}
+          disabled={isUploading || isProcessing}
+        >
+          Back
+        </Button>
+        
+        {currentStep === 'complete' && (
+          <Button 
+            onClick={handleContinue}
+            className="flex items-center"
+          >
+            Continue to Training
+            <ArrowRight className="h-4 w-4 ml-2" />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default UploadData;

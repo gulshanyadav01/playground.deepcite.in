@@ -4,44 +4,82 @@ import { Button } from './Button';
 import { Card, CardHeader, CardTitle, CardContent } from './Card';
 import { 
   ArrowRight, 
-  Brain, 
   Eye, 
   Settings, 
   Plus, 
   X, 
   ChevronDown,
   ChevronUp,
-  Lightbulb,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  FileText,
+  Database,
+  Target,
+  Info
 } from 'lucide-react';
-import { fileService, ColumnConfig, ColumnMapping } from '../../services/fileService';
+
+interface ColumnInfo {
+  name: string;
+  data_type: string;
+  null_count: number;
+  null_percentage: number;
+  unique_count: number;
+  sample_values: any[];
+  total_rows: number;
+  avg_length?: number;
+  max_length?: number;
+  min_length?: number;
+}
+
+interface ColumnConfig {
+  column_name: string;
+  role: 'primary' | 'context' | 'metadata';
+  weight: number;
+  format_type: 'text' | 'json' | 'list' | 'table';
+  custom_template?: string;
+}
+
+interface ColumnMapping {
+  static_instruction: string;
+  instruction_columns: ColumnConfig[];
+  instruction_template: string;
+  input_columns: ColumnConfig[];
+  output_columns: ColumnConfig[];
+  output_template: string;
+  ignored_columns: string[];
+  mapping_name: string;
+  description: string;
+}
+
+interface TrainingExample {
+  instruction: string;
+  input: string | Record<string, any>;
+  output: string | Record<string, any>;
+}
 
 interface ColumnMappingInterfaceProps {
   fileId: string;
   availableColumns: string[];
+  columnInfo: Record<string, ColumnInfo>;
   onMappingComplete: (mapping: ColumnMapping) => void;
   onCancel: () => void;
   initialMapping?: ColumnMapping;
 }
 
-interface ColumnSuggestion {
-  column: string;
-  confidence: number;
-  reason: string;
-}
-
 export const ColumnMappingInterface: React.FC<ColumnMappingInterfaceProps> = ({
   fileId,
   availableColumns,
+  columnInfo,
   onMappingComplete,
   onCancel,
   initialMapping
 }) => {
   const [mapping, setMapping] = useState<ColumnMapping>(
     initialMapping || {
+      static_instruction: '',
       instruction_columns: [],
       instruction_template: '',
+      input_columns: [],
       output_columns: [],
       output_template: '',
       ignored_columns: [],
@@ -50,128 +88,142 @@ export const ColumnMappingInterface: React.FC<ColumnMappingInterfaceProps> = ({
     }
   );
 
-  const [suggestions, setSuggestions] = useState<{
-    instruction: ColumnSuggestion[];
-    output: ColumnSuggestion[];
-  }>({ instruction: [], output: [] });
-
-  const [previewData, setPreviewData] = useState<any[]>([]);
-  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  const [previewData, setPreviewData] = useState<TrainingExample[]>([]);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Load AI suggestions on mount
-  useEffect(() => {
-    if (!initialMapping) {
-      loadAISuggestions();
-    }
-  }, [fileId]);
+  const [validationResult, setValidationResult] = useState<any>(null);
 
   // Update preview when mapping changes
   useEffect(() => {
-    if (mapping.instruction_columns.length > 0 && mapping.output_columns.length > 0) {
+    if (mapping.output_columns.length > 0) {
       loadPreview();
     }
   }, [mapping]);
 
-  const loadAISuggestions = async () => {
-    try {
-      setIsLoadingSuggestions(true);
-      setError(null);
-      
-      const result = await fileService.detectColumns(fileId);
-      
-      // Convert suggestions to our format
-      const instructionSuggestions: ColumnSuggestion[] = result.suggested_mapping.instruction_columns.map(col => ({
-        column: col.column_name,
-        confidence: col.weight || 0,
-        reason: `Detected as ${col.role} column`
-      }));
-
-      const outputSuggestions: ColumnSuggestion[] = result.suggested_mapping.output_columns.map(col => ({
-        column: col.column_name,
-        confidence: col.weight || 0,
-        reason: `Detected as ${col.role} column`
-      }));
-
-      setSuggestions({
-        instruction: instructionSuggestions,
-        output: outputSuggestions
-      });
-
-      // Apply suggestions as initial mapping
-      setMapping(result.suggested_mapping);
-
-    } catch (err: any) {
-      setError(err.message || 'Failed to load AI suggestions');
-    } finally {
-      setIsLoadingSuggestions(false);
-    }
-  };
-
   const loadPreview = async () => {
     try {
       setIsLoadingPreview(true);
-      const result = await fileService.previewMappedData(fileId, mapping, 5);
-      setPreviewData(result.preview_data);
+      setError(null);
+      
+      const response = await fetch(`/api/files/${fileId}/preview-mapped`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          file_id: fileId,
+          column_mapping: mapping,
+          limit: 5
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      setPreviewData(result.preview_data || []);
+      
     } catch (err: any) {
       console.error('Preview error:', err);
       setPreviewData([]);
+      setError(err.message || 'Failed to load preview');
     } finally {
       setIsLoadingPreview(false);
     }
   };
 
-  const addColumnToMapping = (column: string, type: 'instruction' | 'output') => {
+  const validateMapping = async () => {
+    try {
+      const response = await fetch(`/api/files/${fileId}/validate-mapping`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          file_id: fileId,
+          column_mapping: mapping
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      setValidationResult(result.validation);
+      return result.validation.is_valid;
+      
+    } catch (err: any) {
+      setError(err.message || 'Failed to validate mapping');
+      return false;
+    }
+  };
+
+  const addColumnToMapping = (columnName: string, type: 'instruction' | 'input' | 'output') => {
     const newColumn: ColumnConfig = {
-      column_name: column,
+      column_name: columnName,
       role: 'primary',
       weight: 1.0,
       format_type: 'text'
     };
 
-    if (type === 'instruction') {
-      const newColumns = [...mapping.instruction_columns, newColumn];
-      const newTemplate = newColumns.map(col => `{${col.column_name}}`).join('\n');
+    setMapping(prev => {
+      const updated = { ...prev };
       
-      setMapping(prev => ({
-        ...prev,
-        instruction_columns: newColumns,
-        instruction_template: newTemplate
-      }));
-    } else {
-      const newColumns = [...mapping.output_columns, newColumn];
-      const newTemplate = newColumns.map(col => `{${col.column_name}}`).join('\n');
+      if (type === 'instruction') {
+        updated.instruction_columns = [...prev.instruction_columns, newColumn];
+        // Update template if empty
+        if (!updated.instruction_template) {
+          updated.instruction_template = updated.instruction_columns
+            .map(col => `{${col.column_name}}`)
+            .join('\n');
+        }
+      } else if (type === 'input') {
+        updated.input_columns = [...prev.input_columns, newColumn];
+      } else if (type === 'output') {
+        updated.output_columns = [...prev.output_columns, newColumn];
+        // Update template if empty
+        if (!updated.output_template) {
+          updated.output_template = updated.output_columns
+            .map(col => `{${col.column_name}}`)
+            .join('\n');
+        }
+      }
       
-      setMapping(prev => ({
-        ...prev,
-        output_columns: newColumns,
-        output_template: newTemplate
-      }));
-    }
+      return updated;
+    });
   };
 
-  const removeColumnFromMapping = (columnName: string, type: 'instruction' | 'output') => {
-    if (type === 'instruction') {
-      const newColumns = mapping.instruction_columns.filter(col => col.column_name !== columnName);
-      const newTemplate = newColumns.map(col => `{${col.column_name}}`).join('\n');
+  const removeColumnFromMapping = (columnName: string, type: 'instruction' | 'input' | 'output') => {
+    setMapping(prev => {
+      const updated = { ...prev };
       
-      setMapping(prev => ({
-        ...prev,
-        instruction_columns: newColumns,
-        instruction_template: newTemplate
-      }));
-    } else {
-      const newColumns = mapping.output_columns.filter(col => col.column_name !== columnName);
-      const newTemplate = newColumns.map(col => `{${col.column_name}}`).join('\n');
+      if (type === 'instruction') {
+        updated.instruction_columns = prev.instruction_columns.filter(
+          col => col.column_name !== columnName
+        );
+        // Update template
+        updated.instruction_template = updated.instruction_columns
+          .map(col => `{${col.column_name}}`)
+          .join('\n');
+      } else if (type === 'input') {
+        updated.input_columns = prev.input_columns.filter(
+          col => col.column_name !== columnName
+        );
+      } else if (type === 'output') {
+        updated.output_columns = prev.output_columns.filter(
+          col => col.column_name !== columnName
+        );
+        // Update template
+        updated.output_template = updated.output_columns
+          .map(col => `{${col.column_name}}`)
+          .join('\n');
+      }
       
-      setMapping(prev => ({
-        ...prev,
-        output_columns: newColumns,
-        output_template: newTemplate
-      }));
-    }
+      return updated;
+    });
   };
 
   const updateTemplate = (template: string, type: 'instruction' | 'output') => {
@@ -181,15 +233,45 @@ export const ColumnMappingInterface: React.FC<ColumnMappingInterfaceProps> = ({
     }));
   };
 
-  const applySuggestion = (suggestion: ColumnSuggestion, type: 'instruction' | 'output') => {
-    addColumnToMapping(suggestion.column, type);
+  const updateStaticInstruction = (value: string) => {
+    setMapping(prev => ({
+      ...prev,
+      static_instruction: value
+    }));
   };
 
   const handleSaveMapping = async () => {
     try {
       setError(null);
-      await fileService.saveColumnMapping(fileId, mapping);
-      onMappingComplete(mapping);
+      
+      // Validate mapping first
+      const isValid = await validateMapping();
+      if (!isValid) {
+        return;
+      }
+
+      const response = await fetch(`/api/files/${fileId}/map-columns`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          file_id: fileId,
+          column_mapping: mapping
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        onMappingComplete(mapping);
+      } else {
+        throw new Error(result.message || 'Failed to save mapping');
+      }
+      
     } catch (err: any) {
       setError(err.message || 'Failed to save mapping');
     }
@@ -198,6 +280,7 @@ export const ColumnMappingInterface: React.FC<ColumnMappingInterfaceProps> = ({
   const getUsedColumns = () => {
     const used = new Set<string>();
     mapping.instruction_columns.forEach(col => used.add(col.column_name));
+    mapping.input_columns.forEach(col => used.add(col.column_name));
     mapping.output_columns.forEach(col => used.add(col.column_name));
     return used;
   };
@@ -207,7 +290,126 @@ export const ColumnMappingInterface: React.FC<ColumnMappingInterfaceProps> = ({
     return availableColumns.filter(col => !used.has(col));
   };
 
-  const canSave = mapping.instruction_columns.length > 0 && mapping.output_columns.length > 0;
+  const canSave = mapping.output_columns.length > 0;
+
+  const ColumnCard: React.FC<{ 
+    columnName: string; 
+    info: ColumnInfo; 
+    onAdd: (type: 'instruction' | 'input' | 'output') => void;
+    disabled?: boolean;
+  }> = ({ columnName, info, onAdd, disabled = false }) => (
+    <div className={`border rounded-lg p-3 ${disabled ? 'opacity-50' : 'hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+      <div className="flex justify-between items-start mb-2">
+        <h4 className="font-medium text-sm">{columnName}</h4>
+        <span className="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">
+          {info.data_type}
+        </span>
+      </div>
+      
+      <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+        <div>Rows: {info.total_rows.toLocaleString()}</div>
+        <div>Unique: {info.unique_count.toLocaleString()}</div>
+        {info.null_percentage > 0 && (
+          <div>Nulls: {info.null_percentage.toFixed(1)}%</div>
+        )}
+        {info.avg_length && (
+          <div>Avg Length: {Math.round(info.avg_length)}</div>
+        )}
+      </div>
+      
+      <div className="mb-3">
+        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Sample values:</div>
+        <div className="text-xs bg-gray-50 dark:bg-gray-800 p-2 rounded max-h-16 overflow-y-auto">
+          {info.sample_values.slice(0, 3).map((value, idx) => (
+            <div key={idx} className="truncate">
+              {String(value)}
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      {!disabled && (
+        <div className="flex gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onAdd('instruction')}
+            className="flex-1 text-xs"
+          >
+            <FileText className="h-3 w-3 mr-1" />
+            Instruction
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onAdd('input')}
+            className="flex-1 text-xs"
+          >
+            <Database className="h-3 w-3 mr-1" />
+            Input
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onAdd('output')}
+            className="flex-1 text-xs"
+          >
+            <Target className="h-3 w-3 mr-1" />
+            Output
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+
+  const MappedColumnsList: React.FC<{
+    title: string;
+    columns: ColumnConfig[];
+    onRemove: (columnName: string) => void;
+    icon: React.ReactNode;
+    color: string;
+  }> = ({ title, columns, onRemove, icon, color }) => (
+    <div className="space-y-2">
+      <h4 className="font-medium text-sm flex items-center">
+        {icon}
+        {title}
+      </h4>
+      {columns.length === 0 ? (
+        <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+          No columns selected
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {columns.map((col, index) => (
+            <div
+              key={index}
+              className={`flex items-center justify-between ${color} p-2 rounded`}
+            >
+              <div className="flex-1">
+                <span className="text-sm font-medium">{col.column_name}</span>
+                {columnInfo[col.column_name] && (
+                  <div className="text-xs text-gray-600 dark:text-gray-400">
+                    {columnInfo[col.column_name].data_type} • 
+                    {columnInfo[col.column_name].sample_values.length > 0 && 
+                      ` Sample: ${String(columnInfo[col.column_name].sample_values[0]).substring(0, 30)}...`
+                    }
+                  </div>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onRemove(col.column_name)}
+                className="h-6 w-6 p-0"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -217,7 +419,7 @@ export const ColumnMappingInterface: React.FC<ColumnMappingInterfaceProps> = ({
           Map Your Columns
         </h2>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
-          Tell us which columns contain instructions and which contain responses
+          Configure how your data columns should be mapped to training format
         </p>
       </div>
 
@@ -231,215 +433,175 @@ export const ColumnMappingInterface: React.FC<ColumnMappingInterfaceProps> = ({
         </div>
       )}
 
-      {/* AI Suggestions */}
-      {isLoadingSuggestions ? (
+      {/* Validation Results */}
+      {validationResult && (
+        <div className={`border rounded-lg p-4 ${
+          validationResult.is_valid 
+            ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+            : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
+        }`}>
+          <div className="flex items-center mb-2">
+            {validationResult.is_valid ? (
+              <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
+            ) : (
+              <AlertCircle className="h-5 w-5 text-yellow-500 mr-2" />
+            )}
+            <span className="font-medium">
+              {validationResult.is_valid ? 'Mapping Valid' : 'Validation Issues'}
+            </span>
+          </div>
+          
+          {validationResult.issues?.length > 0 && (
+            <div className="mb-2">
+              <div className="text-sm font-medium mb-1">Issues:</div>
+              <ul className="text-sm list-disc list-inside">
+                {validationResult.issues.map((issue: string, idx: number) => (
+                  <li key={idx}>{issue}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {validationResult.warnings?.length > 0 && (
+            <div>
+              <div className="text-sm font-medium mb-1">Warnings:</div>
+              <ul className="text-sm list-disc list-inside">
+                {validationResult.warnings.map((warning: string, idx: number) => (
+                  <li key={idx}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Static Instruction Field */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <FileText className="h-5 w-5 mr-2 text-blue-500" />
+            Static Instruction (Optional)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <textarea
+            value={mapping.static_instruction}
+            onChange={(e) => updateStaticInstruction(e.target.value)}
+            className="w-full h-20 p-3 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+            placeholder="Enter static instruction text that will be added to every training example (e.g., 'Analyze this data:', 'Answer the following question:')"
+          />
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            This text will be prepended to every instruction. Leave empty if not needed.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Column Mapping Sections */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Instruction Columns */}
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mr-3"></div>
-              <span className="text-gray-600 dark:text-gray-400">
-                AI is analyzing your columns...
-              </span>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <FileText className="h-5 w-5 mr-2 text-blue-500" />
+              Instructions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <MappedColumnsList
+              title="Selected Columns:"
+              columns={mapping.instruction_columns}
+              onRemove={(col) => removeColumnFromMapping(col, 'instruction')}
+              icon={<FileText className="h-4 w-4 mr-2 text-blue-500" />}
+              color="bg-blue-50 dark:bg-blue-900/20"
+            />
+          </CardContent>
+        </Card>
+
+        {/* Input Columns */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Database className="h-5 w-5 mr-2 text-green-500" />
+              Input Context
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <MappedColumnsList
+              title="Selected Columns:"
+              columns={mapping.input_columns}
+              onRemove={(col) => removeColumnFromMapping(col, 'input')}
+              icon={<Database className="h-4 w-4 mr-2 text-green-500" />}
+              color="bg-green-50 dark:bg-green-900/20"
+            />
+            <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              {mapping.input_columns.length === 1 
+                ? "Single column → String value"
+                : mapping.input_columns.length > 1
+                ? "Multiple columns → JSON object"
+                : "No columns selected"
+              }
             </div>
           </CardContent>
         </Card>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Instruction Columns */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Brain className="h-5 w-5 mr-2 text-blue-500" />
-                Instructions (What AI responds to)
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Current Mapping */}
-              <div className="space-y-2">
-                <h4 className="font-medium text-sm text-gray-700 dark:text-gray-300">
-                  Selected Columns:
-                </h4>
-                {mapping.instruction_columns.length === 0 ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400 italic">
-                    No columns selected
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {mapping.instruction_columns.map((col, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 p-2 rounded"
-                      >
-                        <span className="text-sm font-medium">{col.column_name}</span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => removeColumnFromMapping(col.column_name, 'instruction')}
-                          className="h-6 w-6 p-0"
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
 
-              {/* AI Suggestions */}
-              {suggestions.instruction.length > 0 && (
-                <div className="space-y-2">
-                  <h4 className="font-medium text-sm text-gray-700 dark:text-gray-300 flex items-center">
-                    <Lightbulb className="h-4 w-4 mr-1 text-yellow-500" />
-                    AI Suggestions:
-                  </h4>
-                  {suggestions.instruction.map((suggestion, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded"
-                    >
-                      <div className="flex-1">
-                        <span className="text-sm font-medium">{suggestion.column}</span>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                          {Math.round(suggestion.confidence * 100)}% confidence
-                        </div>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => applySuggestion(suggestion, 'instruction')}
-                        disabled={getUsedColumns().has(suggestion.column)}
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
+        {/* Output Columns */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Target className="h-5 w-5 mr-2 text-orange-500" />
+              Expected Output
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <MappedColumnsList
+              title="Selected Columns:"
+              columns={mapping.output_columns}
+              onRemove={(col) => removeColumnFromMapping(col, 'output')}
+              icon={<Target className="h-4 w-4 mr-2 text-orange-500" />}
+              color="bg-orange-50 dark:bg-orange-900/20"
+            />
+            <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              {mapping.output_columns.length === 1 
+                ? "Single column → String value"
+                : mapping.output_columns.length > 1
+                ? "Multiple columns → JSON object"
+                : "No columns selected (required)"
+              }
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-              {/* Available Columns */}
-              <div className="space-y-2">
-                <h4 className="font-medium text-sm text-gray-700 dark:text-gray-300">
-                  Available Columns:
-                </h4>
-                <div className="max-h-32 overflow-y-auto space-y-1">
-                  {getAvailableColumns().map((column) => (
-                    <div
-                      key={column}
-                      className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 p-2 rounded"
-                    >
-                      <span className="text-sm">{column}</span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => addColumnToMapping(column, 'instruction')}
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Output Columns */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <CheckCircle className="h-5 w-5 mr-2 text-green-500" />
-                Outputs (AI responses)
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Current Mapping */}
-              <div className="space-y-2">
-                <h4 className="font-medium text-sm text-gray-700 dark:text-gray-300">
-                  Selected Columns:
-                </h4>
-                {mapping.output_columns.length === 0 ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400 italic">
-                    No columns selected
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {mapping.output_columns.map((col, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 p-2 rounded"
-                      >
-                        <span className="text-sm font-medium">{col.column_name}</span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => removeColumnFromMapping(col.column_name, 'output')}
-                          className="h-6 w-6 p-0"
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* AI Suggestions */}
-              {suggestions.output.length > 0 && (
-                <div className="space-y-2">
-                  <h4 className="font-medium text-sm text-gray-700 dark:text-gray-300 flex items-center">
-                    <Lightbulb className="h-4 w-4 mr-1 text-yellow-500" />
-                    AI Suggestions:
-                  </h4>
-                  {suggestions.output.map((suggestion, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded"
-                    >
-                      <div className="flex-1">
-                        <span className="text-sm font-medium">{suggestion.column}</span>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                          {Math.round(suggestion.confidence * 100)}% confidence
-                        </div>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => applySuggestion(suggestion, 'output')}
-                        disabled={getUsedColumns().has(suggestion.column)}
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Available Columns */}
-              <div className="space-y-2">
-                <h4 className="font-medium text-sm text-gray-700 dark:text-gray-300">
-                  Available Columns:
-                </h4>
-                <div className="max-h-32 overflow-y-auto space-y-1">
-                  {getAvailableColumns().map((column) => (
-                    <div
-                      key={column}
-                      className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 p-2 rounded"
-                    >
-                      <span className="text-sm">{column}</span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => addColumnToMapping(column, 'output')}
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      {/* Available Columns */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Info className="h-5 w-5 mr-2" />
+            Available Columns
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {getAvailableColumns().map((columnName) => (
+              <ColumnCard
+                key={columnName}
+                columnName={columnName}
+                info={columnInfo[columnName]}
+                onAdd={(type) => addColumnToMapping(columnName, type)}
+              />
+            ))}
+            {getUsedColumns().size > 0 && Array.from(getUsedColumns()).map((columnName) => (
+              <ColumnCard
+                key={`used-${columnName}`}
+                columnName={columnName}
+                info={columnInfo[columnName]}
+                onAdd={() => {}}
+                disabled={true}
+              />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Advanced Template Editor */}
       <Card>
@@ -519,7 +681,7 @@ export const ColumnMappingInterface: React.FC<ColumnMappingInterfaceProps> = ({
               <div className="space-y-4">
                 {previewData.map((example, index) => (
                   <div key={index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                       <div>
                         <h4 className="font-medium text-sm text-blue-600 dark:text-blue-400 mb-2">
                           Instruction:
@@ -530,10 +692,24 @@ export const ColumnMappingInterface: React.FC<ColumnMappingInterfaceProps> = ({
                       </div>
                       <div>
                         <h4 className="font-medium text-sm text-green-600 dark:text-green-400 mb-2">
-                          Expected Output:
+                          Input:
                         </h4>
                         <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded text-sm">
-                          {example.output}
+                          {typeof example.input === 'string' 
+                            ? example.input || '(empty)'
+                            : JSON.stringify(example.input, null, 2)
+                          }
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-sm text-orange-600 dark:text-orange-400 mb-2">
+                          Output:
+                        </h4>
+                        <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded text-sm">
+                          {typeof example.output === 'string' 
+                            ? example.output
+                            : JSON.stringify(example.output, null, 2)
+                          }
                         </div>
                       </div>
                     </div>
