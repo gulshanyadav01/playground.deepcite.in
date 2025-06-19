@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ConfigureProvider, useConfigureContext } from './ConfigureContext';
 import SelectModel from './SelectModel';
@@ -6,20 +6,27 @@ import UploadData from './UploadData';
 import ConfigureParameters from './ConfigureParameters';
 
 function ConfigureContent() {
-  const { goToStep } = useConfigureContext();
+  const { state, dispatch } = useConfigureContext();
   const location = useLocation();
 
   // Update current step based on route
   useEffect(() => {
     const path = location.pathname;
+    let targetStep = 1;
+    
     if (path.includes('/configure/model')) {
-      goToStep(1);
+      targetStep = 1;
     } else if (path.includes('/configure/data')) {
-      goToStep(2);
+      targetStep = 2;
     } else if (path.includes('/configure/parameters')) {
-      goToStep(3);
+      targetStep = 3;
     }
-  }, [location.pathname, goToStep]);
+    
+    // Only update if the step is different to prevent infinite loops
+    if (state.currentStep !== targetStep) {
+      dispatch({ type: 'SET_CURRENT_STEP', payload: targetStep });
+    }
+  }, [location.pathname, state.currentStep, dispatch]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">

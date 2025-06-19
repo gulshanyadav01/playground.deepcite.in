@@ -6,6 +6,7 @@ import { X, Check, AlertTriangle, ChevronDown, ChevronUp, Settings, Database, Za
 import { motion, AnimatePresence } from 'framer-motion';
 import { Badge } from './Badge';
 import { fileService, FileMetadata } from '../../services/fileService';
+import { datasetService, ProcessedDataset } from '../../services/datasetService';
 import { useConfigureContext } from '../../pages/configure/ConfigureContext';
 
 interface ConfigurationReviewModalProps {
@@ -37,9 +38,11 @@ export function ConfigurationReviewModal({
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   
-  // Selected file metadata state
+  // Selected file/dataset metadata state
   const [selectedFileMetadata, setSelectedFileMetadata] = useState<FileMetadata | null>(null);
+  const [selectedDatasetMetadata, setSelectedDatasetMetadata] = useState<ProcessedDataset | null>(null);
   const [isLoadingFileMetadata, setIsLoadingFileMetadata] = useState(false);
+  const [isDatasetSelected, setIsDatasetSelected] = useState(false);
   
   // Expandable sections state
   const [expandedSections, setExpandedSections] = useState({
@@ -50,28 +53,46 @@ export function ConfigurationReviewModal({
     monitoring: false
   });
 
-  // Load selected file metadata when modal opens or selectedFileId changes
+  // Load selected file/dataset metadata when modal opens or selectedFileId changes
   useEffect(() => {
-    const loadSelectedFileMetadata = async () => {
+    const loadSelectedMetadata = async () => {
       if (isOpen && selectedFileId) {
         try {
           setIsLoadingFileMetadata(true);
-          const response = await fileService.getFileInfo(selectedFileId);
-          if (response.success) {
-            setSelectedFileMetadata(response.file_info);
+          
+          // Check if the ID starts with "dataset_" to determine if it's a dataset
+          if (selectedFileId.startsWith('dataset_')) {
+            // It's a dataset ID, use dataset service
+            setIsDatasetSelected(true);
+            const response = await datasetService.getDataset(selectedFileId);
+            if (response.success) {
+              setSelectedDatasetMetadata(response.dataset);
+              setSelectedFileMetadata(null);
+            }
+          } else {
+            // It's a file ID, use file service
+            setIsDatasetSelected(false);
+            const response = await fileService.getFileInfo(selectedFileId);
+            if (response.success) {
+              setSelectedFileMetadata(response.file_info);
+              setSelectedDatasetMetadata(null);
+            }
           }
         } catch (error) {
-          console.error('Failed to load selected file metadata:', error);
+          console.error('Failed to load selected metadata:', error);
           setSelectedFileMetadata(null);
+          setSelectedDatasetMetadata(null);
         } finally {
           setIsLoadingFileMetadata(false);
         }
       } else {
         setSelectedFileMetadata(null);
+        setSelectedDatasetMetadata(null);
+        setIsDatasetSelected(false);
       }
     };
 
-    loadSelectedFileMetadata();
+    loadSelectedMetadata();
   }, [isOpen, selectedFileId]);
 
   const toggleSection = (section: keyof typeof expandedSections) => {
@@ -222,11 +243,20 @@ export function ConfigurationReviewModal({
 
             {/* Training Data Section */}
             <div className="flex items-start space-x-3 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-              {getValidationIcon()}
+              {selectedDatasetMetadata || selectedFileMetadata ? <Check className="h-4 w-4 text-green-500 mt-0.5" /> : getValidationIcon()}
               <div className="flex-1">
                 <h3 className="font-medium text-gray-900 dark:text-gray-100">Training Data</h3>
                 {isLoadingFileMetadata ? (
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Loading file information...</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Loading data information...</p>
+                ) : selectedDatasetMetadata ? (
+                  <div className="mt-1">
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      {selectedDatasetMetadata.name}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      {datasetService.formatFileSize(selectedDatasetMetadata.file_size)} • {selectedDatasetMetadata.total_examples} examples • Dataset Library
+                    </p>
+                  </div>
                 ) : selectedFileMetadata ? (
                   <div className="mt-1">
                     <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -237,16 +267,18 @@ export function ConfigurationReviewModal({
                     </p>
                   </div>
                 ) : selectedFileId ? (
-                  <p className="text-sm text-red-600 dark:text-red-400 mt-1">Failed to load file information</p>
+                  <p className="text-sm text-red-600 dark:text-red-400 mt-1">Failed to load data information</p>
                 ) : (
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">No file selected</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">No data selected</p>
                 )}
                 <div className="flex items-center gap-2 mt-2">
                   <Badge 
-                    variant={selectedFileMetadata?.validation_status === 'valid' ? 'default' : 'outline'} 
+                    variant={selectedDatasetMetadata || selectedFileMetadata?.validation_status === 'valid' ? 'default' : 'outline'} 
                     size="sm"
                   >
-                    {selectedFileMetadata ? (
+                    {selectedDatasetMetadata ? (
+                      <>✓ Ready for training</>
+                    ) : selectedFileMetadata ? (
                       <>
                         {fileService.getValidationStatusIcon(selectedFileMetadata.validation_status)} {selectedFileMetadata.validation_status}
                       </>
@@ -254,6 +286,11 @@ export function ConfigurationReviewModal({
                       getValidationText()
                     )}
                   </Badge>
+                  {selectedDatasetMetadata && (
+                    <Badge variant="outline" size="sm">
+                      Dataset Library
+                    </Badge>
+                  )}
                   {selectedFileMetadata && (
                     <Badge variant="outline" size="sm">
                       {selectedFileMetadata.file_type.toUpperCase()}

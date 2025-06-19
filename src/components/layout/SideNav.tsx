@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Layers, MessageSquare, Settings, Menu, X, Brain, ChevronDown, LineChart, Activity, BarChart3 } from 'lucide-react';
+import { Home, Layers, MessageSquare, Settings, Menu, X, Brain, ChevronDown, LineChart, Activity, BarChart3, Database } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -20,6 +20,7 @@ const evaluateSteps = [
 
 const navItems = [
   { icon: Home, label: 'Dashboard', path: '/' },
+  { icon: Database, label: 'Data Preparation', path: '/data-preparation' },
   { icon: Brain, label: 'Train', path: '/configure', subItems: trainSteps },
   { icon: LineChart, label: 'Evaluate', path: '/evaluate/test-data', subItems: evaluateSteps },
   { icon: MessageSquare, label: 'Chat', path: '/query' },

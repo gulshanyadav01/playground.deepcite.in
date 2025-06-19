@@ -13,6 +13,7 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import trainingSessionService from '../../services/trainingSessionService';
 import { fileService, FileMetadata } from '../../services/fileService';
+import { datasetService, ProcessedDataset } from '../../services/datasetService';
 import { API_BASE_URL, API_BASE_URL_WITH_API } from '../../config/api';
 
 export default function ConfigureParameters() {
@@ -30,32 +31,52 @@ export default function ConfigureParameters() {
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [currentConfigName, setCurrentConfigName] = useState('Default Settings');
   
-  // Selected file metadata state
+  // Selected file metadata state - can be either file metadata or dataset metadata
   const [selectedFileMetadata, setSelectedFileMetadata] = useState<FileMetadata | null>(null);
+  const [selectedDatasetMetadata, setSelectedDatasetMetadata] = useState<ProcessedDataset | null>(null);
   const [isLoadingFileMetadata, setIsLoadingFileMetadata] = useState(false);
+  const [isDatasetSelected, setIsDatasetSelected] = useState(false);
 
-  // Load selected file metadata when selectedFileId changes
+  // Load selected file/dataset metadata when selectedFileId changes
   useEffect(() => {
-    const loadSelectedFileMetadata = async () => {
+    const loadSelectedMetadata = async () => {
       if (selectedFileId) {
         try {
           setIsLoadingFileMetadata(true);
-          const response = await fileService.getFileInfo(selectedFileId);
-          if (response.success) {
-            setSelectedFileMetadata(response.file_info);
+          
+          // Check if the ID starts with "dataset_" to determine if it's a dataset
+          if (selectedFileId.startsWith('dataset_')) {
+            // It's a dataset ID, use dataset service
+            setIsDatasetSelected(true);
+            const response = await datasetService.getDataset(selectedFileId);
+            if (response.success) {
+              setSelectedDatasetMetadata(response.dataset);
+              setSelectedFileMetadata(null);
+            }
+          } else {
+            // It's a file ID, use file service
+            setIsDatasetSelected(false);
+            const response = await fileService.getFileInfo(selectedFileId);
+            if (response.success) {
+              setSelectedFileMetadata(response.file_info);
+              setSelectedDatasetMetadata(null);
+            }
           }
         } catch (error) {
-          console.error('Failed to load selected file metadata:', error);
+          console.error('Failed to load selected metadata:', error);
           setSelectedFileMetadata(null);
+          setSelectedDatasetMetadata(null);
         } finally {
           setIsLoadingFileMetadata(false);
         }
       } else {
         setSelectedFileMetadata(null);
+        setSelectedDatasetMetadata(null);
+        setIsDatasetSelected(false);
       }
     };
 
-    loadSelectedFileMetadata();
+    loadSelectedMetadata();
   }, [selectedFileId]);
 
   const handleParameterChange = (field: string, value: string | number) => {
@@ -214,25 +235,39 @@ export default function ConfigureParameters() {
       return;
     }
 
-    // Validate that the selected file metadata is loaded
-    if (!selectedFileMetadata) {
-      toast.error('File information not loaded. Please try again.');
+    // Validate that the selected metadata is loaded
+    if (!selectedFileMetadata && !selectedDatasetMetadata) {
+      toast.error('Data information not loaded. Please try again.');
       return;
     }
 
-    // Validate file status
-    if (selectedFileMetadata.validation_status !== 'valid') {
+    // Validate data status
+    if (selectedFileMetadata && selectedFileMetadata.validation_status !== 'valid') {
       toast.error('Selected file is not valid for training. Please select a valid file.');
       return;
     }
 
     // Create training session before starting the API call
     try {
-      // Create a mock File object for the session using selected file metadata
-      const mockFile = new File([''], selectedFileMetadata.original_filename, { 
-        type: selectedFileMetadata.file_type === 'json' ? 'application/json' : 'text/csv' 
-      });
-      Object.defineProperty(mockFile, 'size', { value: selectedFileMetadata.file_size, writable: false });
+      // Create a mock File object for the session using selected metadata
+      let mockFile: File;
+      
+      if (selectedFileMetadata) {
+        // Using file metadata
+        mockFile = new File([''], selectedFileMetadata.original_filename, { 
+          type: selectedFileMetadata.file_type === 'json' ? 'application/json' : 'text/csv' 
+        });
+        Object.defineProperty(mockFile, 'size', { value: selectedFileMetadata.file_size, writable: false });
+      } else if (selectedDatasetMetadata) {
+        // Using dataset metadata
+        mockFile = new File([''], selectedDatasetMetadata.source_filename, { 
+          type: 'application/json' // Datasets are always stored as JSON
+        });
+        Object.defineProperty(mockFile, 'size', { value: selectedDatasetMetadata.file_size, writable: false });
+      } else {
+        // Fallback
+        mockFile = new File([''], 'training_data.json', { type: 'application/json' });
+      }
 
       // Create the training session
       const session = trainingSessionService.createSession(
@@ -1588,7 +1623,21 @@ export default function ConfigureParameters() {
               <div className="space-y-1">
                 <p className="text-sm font-medium">Dataset</p>
                 {isLoadingFileMetadata ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Loading file information...</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Loading data information...</p>
+                ) : selectedDatasetMetadata ? (
+                  <div className="space-y-1">
+                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                      {selectedDatasetMetadata.name}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {datasetService.formatFileSize(selectedDatasetMetadata.file_size)} • {selectedDatasetMetadata.total_examples} examples • Dataset Library
+                    </p>
+                    <div className="flex items-center space-x-1">
+                      <span className="text-xs text-green-600 dark:text-green-400">
+                        ✓ Ready for training
+                      </span>
+                    </div>
+                  </div>
                 ) : selectedFileMetadata ? (
                   <div className="space-y-1">
                     <p className="text-sm text-gray-700 dark:text-gray-300">
@@ -1604,9 +1653,9 @@ export default function ConfigureParameters() {
                     </div>
                   </div>
                 ) : selectedFileId ? (
-                  <p className="text-sm text-red-600 dark:text-red-400">Failed to load file information</p>
+                  <p className="text-sm text-red-600 dark:text-red-400">Failed to load data information</p>
                 ) : (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">No file selected</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">No data selected</p>
                 )}
               </div>
               
