@@ -1,5 +1,5 @@
 // Use proxy in development, direct URL in production
-const API_BASE_URL = import.meta.env.DEV ? '/api' : 'https://finetune_engine.deepcite.in';
+import { API_BASE_URL } from "../config/api";
 
 export interface EvaluationJob {
   id: string;
