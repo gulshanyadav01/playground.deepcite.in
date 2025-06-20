@@ -1,5 +1,45 @@
 import { API_BASE_URL, API_BASE_URL_WITH_API } from '../config/api';
 
+export interface ColumnConfig {
+  column_name: string;
+  role: 'primary' | 'context' | 'metadata';
+  weight?: number;
+  format_type?: 'text' | 'json' | 'list' | 'table';
+  custom_template?: string;
+}
+
+export interface ColumnMapping {
+  static_instruction?: string;
+  instruction_columns: ColumnConfig[];
+  instruction_template: string;
+  input_columns: ColumnConfig[];
+  output_columns: ColumnConfig[];
+  output_template: string;
+  ignored_columns?: string[];
+  mapping_name?: string;
+  description?: string;
+  created_at?: string;
+}
+
+export interface ColumnInfo {
+  name: string;
+  data_type: string;
+  null_count: number;
+  null_percentage: number;
+  unique_count: number;
+  sample_values: any[];
+  total_rows: number;
+  avg_length?: number;
+  max_length?: number;
+  min_length?: number;
+}
+
+export interface TrainingExample {
+  instruction: string;
+  input: string | Record<string, any>;
+  output: string | Record<string, any>;
+}
+
 export interface FileMetadata {
   file_id: string;
   display_name: string;
@@ -19,9 +59,13 @@ export interface FileMetadata {
     sample_data: any[];
     null_counts: Record<string, number>;
     issues: string[];
+    column_types?: Record<string, string>;
+    column_stats?: Record<string, ColumnInfo>;
   };
   tags: string[];
   used_in_sessions: string[];
+  column_mapping?: ColumnMapping;
+  has_mapping?: boolean;
 }
 
 export interface FileUploadResponse {
@@ -49,6 +93,64 @@ export interface FilePreviewResponse {
   preview_data: any[];
   total_rows: number;
   showing_rows: number;
+  columns: string[];
+}
+
+export interface ColumnInfoResponse {
+  success: boolean;
+  file_id: string;
+  available_columns: string[];
+  column_info: Record<string, ColumnInfo>;
+  total_rows: number;
+  file_stats: {
+    total_columns: number;
+    total_rows: number;
+    memory_usage: number;
+  };
+}
+
+export interface ValidationResult {
+  is_valid: boolean;
+  issues: string[];
+  warnings: string[];
+  mapped_columns: string[];
+  unused_columns: string[];
+}
+
+export interface MappedPreviewResponse {
+  success: boolean;
+  file_id: string;
+  preview_data: TrainingExample[];
+  total_rows: number;
+  showing_rows: number;
+  mapping_applied: ColumnMapping;
+}
+
+export interface ProcessedFileResponse {
+  success: boolean;
+  file_id: string;
+  processed_data: TrainingExample[];
+  total_examples: number;
+  processing_stats: {
+    total_input_rows: number;
+    valid_output_rows: number;
+    skipped_rows: number;
+    success_rate: number;
+    instruction_stats: {
+      avg_length: number;
+      min_length: number;
+      max_length: number;
+    };
+    output_types: {
+      string_outputs: number;
+      json_outputs: number;
+    };
+    column_usage: {
+      instruction_columns: number;
+      input_columns: number;
+      output_columns: number;
+    };
+  };
 }
 
 class FileService {
@@ -134,6 +236,161 @@ class FileService {
   }
 
   /**
+   * Get detailed column information for a file
+   */
+  async getColumnInfo(fileId: string): Promise<ColumnInfoResponse> {
+    const response = await fetch(`${this.baseUrl}/${fileId}/column-info`);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to get column info');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Validate a column mapping configuration
+   */
+  async validateMapping(fileId: string, columnMapping: ColumnMapping): Promise<{
+    success: boolean;
+    file_id: string;
+    validation: ValidationResult;
+  }> {
+    const response = await fetch(`${this.baseUrl}/${fileId}/validate-mapping`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        file_id: fileId,
+        column_mapping: columnMapping,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to validate mapping');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Save column mapping configuration for a file
+   */
+  async saveColumnMapping(fileId: string, columnMapping: ColumnMapping): Promise<{
+    success: boolean;
+    message: string;
+    file_id: string;
+    validation_status?: string;
+  }> {
+    const response = await fetch(`${this.baseUrl}/${fileId}/map-columns`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        file_id: fileId,
+        column_mapping: columnMapping,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to save column mapping');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Preview how data will look with applied column mapping
+   */
+  async previewMappedData(fileId: string, columnMapping: ColumnMapping, limit: number = 10): Promise<MappedPreviewResponse> {
+    const response = await fetch(`${this.baseUrl}/${fileId}/preview-mapped`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        file_id: fileId,
+        column_mapping: columnMapping,
+        limit,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to preview mapped data');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Process the entire file with the given column mapping
+   */
+  async processCompleteFile(fileId: string, columnMapping: ColumnMapping): Promise<ProcessedFileResponse> {
+    const response = await fetch(`${this.baseUrl}/${fileId}/process-complete`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        file_id: fileId,
+        column_mapping: columnMapping,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to process file');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get current column mapping for a file
+   */
+  async getFileMapping(fileId: string): Promise<{
+    success: boolean;
+    file_id: string;
+    column_mapping: ColumnMapping;
+    has_mapping: boolean;
+  }> {
+    const response = await fetch(`${this.baseUrl}/${fileId}/mapping`);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to get file mapping');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Remove column mapping from a file
+   */
+  async removeFileMapping(fileId: string): Promise<{
+    success: boolean;
+    message: string;
+    file_id: string;
+  }> {
+    const response = await fetch(`${this.baseUrl}/${fileId}/mapping`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to remove file mapping');
+    }
+
+    return response.json();
+  }
+
+  /**
    * List all uploaded files with optional filtering and sorting
    */
   async listFiles(
@@ -189,65 +446,6 @@ class FileService {
   }
 
   /**
-   * Download a file
-   */
-  async downloadFile(fileId: string): Promise<Blob> {
-    const response = await fetch(`${this.baseUrl}/${fileId}/download`);
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to download file');
-    }
-
-    return response.blob();
-  }
-
-  /**
-   * Update file metadata
-   */
-  async updateFileMetadata(
-    fileId: string,
-    updates: { display_name?: string; tags?: string[] }
-  ): Promise<{ success: boolean; message: string; file_id: string }> {
-    const response = await fetch(`${this.baseUrl}/${fileId}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(updates),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to update file metadata');
-    }
-
-    return response.json();
-  }
-
-  /**
-   * Re-validate a file
-   */
-  async revalidateFile(fileId: string): Promise<{
-    success: boolean;
-    message: string;
-    file_id: string;
-    validation_status: string;
-    validation_details: any;
-  }> {
-    const response = await fetch(`${this.baseUrl}/${fileId}/revalidate`, {
-      method: 'POST',
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to revalidate file');
-    }
-
-    return response.json();
-  }
-
-  /**
    * Delete a file
    */
   async deleteFile(fileId: string): Promise<{ success: boolean; message: string; file_id: string }> {
@@ -258,20 +456,6 @@ class FileService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.detail || 'Failed to delete file');
-    }
-
-    return response.json();
-  }
-
-  /**
-   * Get storage statistics
-   */
-  async getStorageStats(): Promise<{ success: boolean; stats: any }> {
-    const response = await fetch(`${this.baseUrl}/stats`);
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to get storage stats');
     }
 
     return response.json();
@@ -365,6 +549,42 @@ class FileService {
       default:
         return '❓';
     }
+  }
+
+  /**
+   * Download processed training data as JSON
+   */
+  downloadTrainingData(data: TrainingExample[], filename: string = 'training_data.json'): void {
+    const jsonString = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    URL.revokeObjectURL(url);
+  }
+
+  /**
+   * Export processing statistics as JSON
+   */
+  downloadProcessingStats(stats: any, filename: string = 'processing_stats.json'): void {
+    const jsonString = JSON.stringify(stats, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    URL.revokeObjectURL(url);
   }
 }
 

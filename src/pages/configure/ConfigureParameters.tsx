@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { HelpCircle, RotateCcw, Settings, ChevronDown, ChevronUp } from 'lucide-react';
+import { HelpCircle, RotateCcw, Settings, ChevronDown, ChevronUp, AlertCircle, Check } from 'lucide-react';
 import { Tooltip } from '../../components/ui/Tooltip';
 import { createTrainingConfig } from '../../config/training';
 import { useConfigureContext } from './ConfigureContext';
@@ -13,6 +13,7 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import trainingSessionService from '../../services/trainingSessionService';
 import { fileService, FileMetadata } from '../../services/fileService';
+import { datasetService, ProcessedDataset } from '../../services/datasetService';
 import { API_BASE_URL, API_BASE_URL_WITH_API } from '../../config/api';
 
 export default function ConfigureParameters() {
@@ -30,32 +31,52 @@ export default function ConfigureParameters() {
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [currentConfigName, setCurrentConfigName] = useState('Default Settings');
   
-  // Selected file metadata state
+  // Selected file metadata state - can be either file metadata or dataset metadata
   const [selectedFileMetadata, setSelectedFileMetadata] = useState<FileMetadata | null>(null);
+  const [selectedDatasetMetadata, setSelectedDatasetMetadata] = useState<ProcessedDataset | null>(null);
   const [isLoadingFileMetadata, setIsLoadingFileMetadata] = useState(false);
+  const [isDatasetSelected, setIsDatasetSelected] = useState(false);
 
-  // Load selected file metadata when selectedFileId changes
+  // Load selected file/dataset metadata when selectedFileId changes
   useEffect(() => {
-    const loadSelectedFileMetadata = async () => {
+    const loadSelectedMetadata = async () => {
       if (selectedFileId) {
         try {
           setIsLoadingFileMetadata(true);
-          const response = await fileService.getFileInfo(selectedFileId);
-          if (response.success) {
-            setSelectedFileMetadata(response.file_info);
+          
+          // Check if the ID starts with "dataset_" to determine if it's a dataset
+          if (selectedFileId.startsWith('dataset_')) {
+            // It's a dataset ID, use dataset service
+            setIsDatasetSelected(true);
+            const response = await datasetService.getDataset(selectedFileId);
+            if (response.success) {
+              setSelectedDatasetMetadata(response.dataset);
+              setSelectedFileMetadata(null);
+            }
+          } else {
+            // It's a file ID, use file service
+            setIsDatasetSelected(false);
+            const response = await fileService.getFileInfo(selectedFileId);
+            if (response.success) {
+              setSelectedFileMetadata(response.file_info);
+              setSelectedDatasetMetadata(null);
+            }
           }
         } catch (error) {
-          console.error('Failed to load selected file metadata:', error);
+          console.error('Failed to load selected metadata:', error);
           setSelectedFileMetadata(null);
+          setSelectedDatasetMetadata(null);
         } finally {
           setIsLoadingFileMetadata(false);
         }
       } else {
         setSelectedFileMetadata(null);
+        setSelectedDatasetMetadata(null);
+        setIsDatasetSelected(false);
       }
     };
 
-    loadSelectedFileMetadata();
+    loadSelectedMetadata();
   }, [selectedFileId]);
 
   const handleParameterChange = (field: string, value: string | number) => {
@@ -124,6 +145,18 @@ export default function ConfigureParameters() {
         handleTrainingConfigChange(field, min);
       }
     }
+  };
+
+  // Validation function for Hub model ID
+  const validateHubModelId = (id: string): { isValid: boolean; error?: string } => {
+    if (!id.trim()) return { isValid: false, error: "Repository ID is required when push to hub is enabled" };
+    
+    const pattern = /^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?\/[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$/;
+    if (!pattern.test(id)) {
+      return { isValid: false, error: "Format should be: username/repository-name" };
+    }
+    
+    return { isValid: true };
   };
 
   // Helper function to handle input focus - select all text for easy replacement
@@ -214,25 +247,39 @@ export default function ConfigureParameters() {
       return;
     }
 
-    // Validate that the selected file metadata is loaded
-    if (!selectedFileMetadata) {
-      toast.error('File information not loaded. Please try again.');
+    // Validate that the selected metadata is loaded
+    if (!selectedFileMetadata && !selectedDatasetMetadata) {
+      toast.error('Data information not loaded. Please try again.');
       return;
     }
 
-    // Validate file status
-    if (selectedFileMetadata.validation_status !== 'valid') {
+    // Validate data status
+    if (selectedFileMetadata && selectedFileMetadata.validation_status !== 'valid') {
       toast.error('Selected file is not valid for training. Please select a valid file.');
       return;
     }
 
     // Create training session before starting the API call
     try {
-      // Create a mock File object for the session using selected file metadata
-      const mockFile = new File([''], selectedFileMetadata.original_filename, { 
-        type: selectedFileMetadata.file_type === 'json' ? 'application/json' : 'text/csv' 
-      });
-      Object.defineProperty(mockFile, 'size', { value: selectedFileMetadata.file_size, writable: false });
+      // Create a mock File object for the session using selected metadata
+      let mockFile: File;
+      
+      if (selectedFileMetadata) {
+        // Using file metadata
+        mockFile = new File([''], selectedFileMetadata.original_filename, { 
+          type: selectedFileMetadata.file_type === 'json' ? 'application/json' : 'text/csv' 
+        });
+        Object.defineProperty(mockFile, 'size', { value: selectedFileMetadata.file_size, writable: false });
+      } else if (selectedDatasetMetadata) {
+        // Using dataset metadata
+        mockFile = new File([''], selectedDatasetMetadata.source_filename, { 
+          type: 'application/json' // Datasets are always stored as JSON
+        });
+        Object.defineProperty(mockFile, 'size', { value: selectedDatasetMetadata.file_size, writable: false });
+      } else {
+        // Fallback
+        mockFile = new File([''], 'training_data.json', { type: 'application/json' });
+      }
 
       // Create the training session
       const session = trainingSessionService.createSession(
@@ -399,6 +446,78 @@ export default function ConfigureParameters() {
               Model name is required
             </p>
           )}
+        </div>
+
+        {/* Hugging Face Hub Integration */}
+        <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+          <div className="space-y-3">
+            <div className="flex items-center space-x-3">
+              <input
+                type="checkbox"
+                id="pushToHub"
+                checked={trainingConfig.push_to_hub}
+                onChange={(e) => handleTrainingConfigChange('push_to_hub', e.target.checked)}
+                className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+              />
+              <div className="flex-1">
+                <label htmlFor="pushToHub" className="block text-sm font-medium">
+                  🤗 Push to Hugging Face Hub
+                </label>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Automatically upload your fine-tuned model to Hugging Face Hub after training
+                </p>
+              </div>
+              <Tooltip content="Upload your trained model to Hugging Face Hub for easy sharing and deployment">
+                <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
+              </Tooltip>
+            </div>
+
+            {trainingConfig.push_to_hub && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-2"
+              >
+                <label htmlFor="hubModelId" className="block text-sm font-medium">
+                  Repository ID
+                </label>
+                <input
+                  type="text"
+                  id="hubModelId"
+                  value={trainingConfig.hub_model_id}
+                  onChange={(e) => handleTrainingConfigChange('hub_model_id', e.target.value)}
+                  className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent ${
+                    trainingConfig.hub_model_id && !validateHubModelId(trainingConfig.hub_model_id).isValid
+                      ? 'border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20'
+                      : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800'
+                  }`}
+                  placeholder="username/repository-name"
+                />
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <strong>Format:</strong> username/repository-name
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <strong>Example:</strong> myusername/my-fine-tuned-model
+                  </p>
+                  {trainingConfig.hub_model_id && !validateHubModelId(trainingConfig.hub_model_id).isValid && (
+                    <p className="text-xs text-red-600 dark:text-red-400 flex items-center">
+                      <AlertCircle className="h-3 w-3 mr-1" />
+                      {validateHubModelId(trainingConfig.hub_model_id).error}
+                    </p>
+                  )}
+                  {trainingConfig.hub_model_id && validateHubModelId(trainingConfig.hub_model_id).isValid && (
+                    <p className="text-xs text-green-600 dark:text-green-400 flex items-center">
+                      <Check className="h-3 w-3 mr-1" />
+                      Valid repository ID format
+                    </p>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </div>
         </div>
       </div>
     </CardContent>
@@ -1588,7 +1707,21 @@ export default function ConfigureParameters() {
               <div className="space-y-1">
                 <p className="text-sm font-medium">Dataset</p>
                 {isLoadingFileMetadata ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Loading file information...</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Loading data information...</p>
+                ) : selectedDatasetMetadata ? (
+                  <div className="space-y-1">
+                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                      {selectedDatasetMetadata.name}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {datasetService.formatFileSize(selectedDatasetMetadata.file_size)} • {selectedDatasetMetadata.total_examples} examples • Dataset Library
+                    </p>
+                    <div className="flex items-center space-x-1">
+                      <span className="text-xs text-green-600 dark:text-green-400">
+                        ✓ Ready for training
+                      </span>
+                    </div>
+                  </div>
                 ) : selectedFileMetadata ? (
                   <div className="space-y-1">
                     <p className="text-sm text-gray-700 dark:text-gray-300">
@@ -1604,9 +1737,9 @@ export default function ConfigureParameters() {
                     </div>
                   </div>
                 ) : selectedFileId ? (
-                  <p className="text-sm text-red-600 dark:text-red-400">Failed to load file information</p>
+                  <p className="text-sm text-red-600 dark:text-red-400">Failed to load data information</p>
                 ) : (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">No file selected</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">No data selected</p>
                 )}
               </div>
               
