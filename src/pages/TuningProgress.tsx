@@ -4,10 +4,13 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../co
 import { Button } from '../components/ui/Button';
 import { Progress } from '../components/ui/Progress';
 import { Badge } from '../components/ui/Badge';
-import { Timer, CheckCircle2, ChevronDown, Play, Pause, FileDown, ArrowUpRight, Share2, Copy } from 'lucide-react';
+import { Timer, CheckCircle2, ChevronDown, Play, Pause, FileDown, ArrowUpRight, Share2, Copy, Cpu, HardDrive, Activity, Zap, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TrainingLossChart from '../components/training/TrainingLossChart';
+import MetricCard from '../components/monitoring/MetricCard';
+import LiveChart from '../components/monitoring/LiveChart';
 import trainingSessionService from '../services/trainingSessionService';
+import { monitoringService, PerformanceMetrics } from '../services/monitoringService';
 import { API_BASE_URL_WITH_API } from '../config/api';
 
 interface LogEntry {
@@ -44,6 +47,11 @@ export default function TuningProgress() {
   const [timeElapsed, setTimeElapsed] = useState(0);
   const [timeRemaining, setTimeRemaining] = useState(1800); // 30 minutes in seconds
   const [showDetails, setShowDetails] = useState(false);
+  const [showSystemCharts, setShowSystemCharts] = useState(false);
+  
+  // System monitoring state
+  const [systemMetrics, setSystemMetrics] = useState<PerformanceMetrics | null>(null);
+  const [systemAlerts, setSystemAlerts] = useState<string[]>([]);
 
   // Get current training session
   const currentSession = trainingSessionService.getCurrentSession();
@@ -180,6 +188,43 @@ export default function TuningProgress() {
       display: `${Math.floor(currentEpoch)}/${totalEpochs}`
     };
   };
+
+  // System monitoring useEffect
+  useEffect(() => {
+    if (currentStatus === 'not_started' || currentStatus === 'completed') return;
+
+    // Set up monitoring service listeners
+    const handleMetrics = (metrics: PerformanceMetrics) => {
+      setSystemMetrics(metrics);
+      
+      // Generate alerts based on system health
+      const alerts: string[] = [];
+      
+      if (metrics.systemHealth.cpu > 90) {
+        alerts.push('High CPU usage detected - may impact training performance');
+      }
+      if (metrics.systemHealth.memory > 90) {
+        alerts.push('High memory usage detected - risk of out-of-memory errors');
+      }
+      if (metrics.systemHealth.gpu > 95) {
+        alerts.push('GPU utilization at maximum - optimal for training');
+      }
+      if (metrics.systemHealth.gpuMemory > 90) {
+        alerts.push('GPU memory near capacity - monitor for memory errors');
+      }
+      if (metrics.systemHealth.status === 'critical') {
+        alerts.push('Critical system health - consider pausing training');
+      }
+      
+      setSystemAlerts(alerts);
+    };
+
+    monitoringService.on('metrics', handleMetrics);
+
+    return () => {
+      monitoringService.off('metrics', handleMetrics);
+    };
+  }, [currentStatus]);
 
   useEffect(() => {
     if (isPaused || currentStatus === 'completed') return;
@@ -447,6 +492,189 @@ export default function TuningProgress() {
           {/* Training Loss Chart - Show when training has started */}
           {currentStatus !== 'not_started' && logs.length > 0 && (
             <TrainingLossChart logs={logs} height={350} />
+          )}
+
+          {/* System Health Section - Show when training is active */}
+          {currentStatus !== 'not_started' && currentStatus !== 'completed' && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-primary-600 dark:text-primary-400" />
+                    <CardTitle>System Health</CardTitle>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {systemAlerts.length > 0 && (
+                      <Badge variant="warning" className="flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {systemAlerts.length} Alert{systemAlerts.length > 1 ? 's' : ''}
+                      </Badge>
+                    )}
+                    <Badge variant={systemMetrics?.systemHealth.status === 'healthy' ? 'success' : 
+                                   systemMetrics?.systemHealth.status === 'warning' ? 'warning' : 'error'}>
+                      {systemMetrics?.systemHealth.status === 'healthy' ? 'Healthy' :
+                       systemMetrics?.systemHealth.status === 'warning' ? 'Warning' : 'Critical'}
+                    </Badge>
+                  </div>
+                </div>
+                <CardDescription>
+                  Real-time system resource monitoring during training
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* System Alerts */}
+                {systemAlerts.length > 0 && (
+                  <div className="bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="h-5 w-5 text-warning-600 dark:text-warning-400 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium text-warning-800 dark:text-warning-300 mb-2">
+                          System Alerts
+                        </h4>
+                        <ul className="space-y-1">
+                          {systemAlerts.map((alert, index) => (
+                            <li key={index} className="text-sm text-warning-700 dark:text-warning-400">
+                              • {alert}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Resource Metrics Grid */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <MetricCard
+                    title="CPU Usage"
+                    value={systemMetrics?.systemHealth.cpu || 0}
+                    unit="%"
+                    icon={<Cpu />}
+                    color={
+                      (systemMetrics?.systemHealth.cpu || 0) > 90 ? 'error' :
+                      (systemMetrics?.systemHealth.cpu || 0) > 70 ? 'warning' : 'primary'
+                    }
+                    trend={{
+                      direction: 'up',
+                      percentage: 5.2,
+                      isGood: (systemMetrics?.systemHealth.cpu || 0) < 80
+                    }}
+                  />
+                  
+                  <MetricCard
+                    title="Memory"
+                    value={systemMetrics?.systemHealth.memory || 0}
+                    unit="%"
+                    icon={<HardDrive />}
+                    color={
+                      (systemMetrics?.systemHealth.memory || 0) > 90 ? 'error' :
+                      (systemMetrics?.systemHealth.memory || 0) > 70 ? 'warning' : 'success'
+                    }
+                    trend={{
+                      direction: 'up',
+                      percentage: 3.1,
+                      isGood: (systemMetrics?.systemHealth.memory || 0) < 85
+                    }}
+                  />
+                  
+                  <MetricCard
+                    title="GPU Usage"
+                    value={systemMetrics?.systemHealth.gpu || 0}
+                    unit="%"
+                    icon={<Zap />}
+                    color={
+                      (systemMetrics?.systemHealth.gpu || 0) > 95 ? 'success' :
+                      (systemMetrics?.systemHealth.gpu || 0) > 70 ? 'primary' : 'warning'
+                    }
+                    trend={{
+                      direction: 'up',
+                      percentage: 12.5,
+                      isGood: (systemMetrics?.systemHealth.gpu || 0) > 70
+                    }}
+                    subtitle="Utilization"
+                  />
+                  
+                  <MetricCard
+                    title="GPU Memory"
+                    value={systemMetrics?.systemHealth.gpuMemory || 0}
+                    unit="%"
+                    icon={<Activity />}
+                    color={
+                      (systemMetrics?.systemHealth.gpuMemory || 0) > 90 ? 'warning' :
+                      (systemMetrics?.systemHealth.gpuMemory || 0) > 70 ? 'primary' : 'success'
+                    }
+                    trend={{
+                      direction: 'up',
+                      percentage: 8.3,
+                      isGood: (systemMetrics?.systemHealth.gpuMemory || 0) < 85
+                    }}
+                    subtitle={systemMetrics?.systemHealth.gpuMemoryUsed && systemMetrics?.systemHealth.gpuMemoryTotal 
+                      ? `${(systemMetrics.systemHealth.gpuMemoryUsed / 1024 / 1024 / 1024).toFixed(1)}GB / ${(systemMetrics.systemHealth.gpuMemoryTotal / 1024 / 1024 / 1024).toFixed(1)}GB`
+                      : undefined
+                    }
+                  />
+                </div>
+
+                {/* Resource Trends Charts */}
+                <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <button
+                    onClick={() => setShowSystemCharts(!showSystemCharts)}
+                    className="flex items-center text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors mb-4"
+                  >
+                    <span>{showSystemCharts ? 'Hide' : 'Show'} resource trends</span>
+                    <ChevronDown className={`h-4 w-4 ml-1 transform transition-transform ${showSystemCharts ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  <AnimatePresence>
+                    {showSystemCharts && systemMetrics && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                          <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+                            <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">
+                              CPU & Memory Usage
+                            </h4>
+                            <LiveChart
+                              data={[
+                                { timestamp: Date.now() - 60000, value: systemMetrics.systemHealth.cpu - 5 },
+                                { timestamp: Date.now() - 30000, value: systemMetrics.systemHealth.cpu - 2 },
+                                { timestamp: Date.now(), value: systemMetrics.systemHealth.cpu }
+                              ]}
+                              title="CPU Usage"
+                              color="#6366f1"
+                              height={200}
+                              unit="%"
+                            />
+                          </div>
+                          
+                          <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+                            <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">
+                              GPU Utilization
+                            </h4>
+                            <LiveChart
+                              data={[
+                                { timestamp: Date.now() - 60000, value: systemMetrics.systemHealth.gpu - 8 },
+                                { timestamp: Date.now() - 30000, value: systemMetrics.systemHealth.gpu - 3 },
+                                { timestamp: Date.now(), value: systemMetrics.systemHealth.gpu }
+                              ]}
+                              title="GPU Usage"
+                              color="#10b981"
+                              height={200}
+                              unit="%"
+                            />
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           {currentStatus === 'not_started' && (

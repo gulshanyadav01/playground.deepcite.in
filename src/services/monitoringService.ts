@@ -31,6 +31,9 @@ export interface PerformanceMetrics {
     cpu: number;
     memory: number;
     gpu: number;
+    gpuMemory: number;
+    gpuMemoryUsed?: number;
+    gpuMemoryTotal?: number;
     status: 'healthy' | 'warning' | 'critical';
   };
 }
@@ -162,6 +165,10 @@ class MonitoringService {
 
   private handleMetricsMessage(data: any) {
     // Convert backend metrics to frontend format
+    const gpuMemoryPercent = data.gpu_memory_used && data.gpu_memory_total 
+      ? (data.gpu_memory_used / data.gpu_memory_total) * 100 
+      : 0;
+
     const metrics: PerformanceMetrics = {
       responseTime: {
         current: 0, // Will be calculated from API response times
@@ -189,6 +196,9 @@ class MonitoringService {
         cpu: data.cpu_percent || 0,
         memory: data.memory_percent || 0,
         gpu: data.gpu_percent || 0,
+        gpuMemory: Math.round(gpuMemoryPercent),
+        gpuMemoryUsed: data.gpu_memory_used,
+        gpuMemoryTotal: data.gpu_memory_total,
         status: this.getHealthStatus(data.cpu_percent, data.memory_percent, data.disk_percent),
       },
     };
@@ -291,6 +301,7 @@ class MonitoringService {
           cpu: 52,
           memory: 68,
           gpu: 75,
+          gpuMemory: 45,
           status: 'healthy',
         },
       };
@@ -338,6 +349,11 @@ class MonitoringService {
         cpu: latest.cpu_percent || 0,
         memory: latest.memory_percent || 0,
         gpu: latest.gpu_percent || 0,
+        gpuMemory: latest.gpu_memory_used && latest.gpu_memory_total 
+          ? (latest.gpu_memory_used / latest.gpu_memory_total) * 100 
+          : 0,
+        gpuMemoryUsed: latest.gpu_memory_used,
+        gpuMemoryTotal: latest.gpu_memory_total,
         status: this.getHealthStatus(latest.cpu_percent, latest.memory_percent, latest.disk_percent),
       },
     };
@@ -381,6 +397,11 @@ class MonitoringService {
           cpu: data.cpu?.percent || 0,
           memory: data.memory?.percent || 0,
           gpu: data.gpu?.percent || 0,
+          gpuMemory: data.gpu?.memory_used && data.gpu?.memory_total 
+            ? (data.gpu.memory_used / data.gpu.memory_total) * 100 
+            : 0,
+          gpuMemoryUsed: data.gpu?.memory_used,
+          gpuMemoryTotal: data.gpu?.memory_total,
           status: this.getHealthStatus(data.cpu?.percent, data.memory?.percent, data.disk?.percent),
         },
       };
@@ -479,6 +500,7 @@ class MonitoringService {
         cpu: Math.round(45 + Math.random() * 30),
         memory: Math.round(60 + Math.random() * 25),
         gpu: Math.round(70 + Math.random() * 20),
+        gpuMemory: Math.round(40 + Math.random() * 35),
         status: Math.random() > 0.8 ? 'warning' : 'healthy',
       },
     };
