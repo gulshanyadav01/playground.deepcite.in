@@ -63,6 +63,18 @@ export default function ConfigureTuning() {
     setParameters({ ...parameters, [field]: value });
   };
 
+  // Validation function for Hub model ID
+  const validateHubModelId = (id: string): { isValid: boolean; error?: string } => {
+    if (!id.trim()) return { isValid: false, error: "Repository ID is required when push to hub is enabled" };
+    
+    const pattern = /^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?\/[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$/;
+    if (!pattern.test(id)) {
+      return { isValid: false, error: "Format should be: username/repository-name" };
+    }
+    
+    return { isValid: true };
+  };
+
   // Get current models list based on active tab
   const currentModels = activeModelTab === 'finetuned' ? availableModels : huggingFaceModels;
 
@@ -823,6 +835,78 @@ export default function ConfigureTuning() {
                     <Badge variant="outline" className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
                       + Add Tag
                     </Badge>
+                  </div>
+                </div>
+
+                {/* Hugging Face Hub Integration */}
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="checkbox"
+                        id="pushToHub"
+                        checked={trainingConfig.push_to_hub}
+                        onChange={(e) => setTrainingConfig(prev => ({ ...prev, push_to_hub: e.target.checked }))}
+                        className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                      />
+                      <div className="flex-1">
+                        <label htmlFor="pushToHub" className="block text-sm font-medium">
+                          🤗 Push to Hugging Face Hub
+                        </label>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Automatically upload your fine-tuned model to Hugging Face Hub after training
+                        </p>
+                      </div>
+                      <Tooltip content="Upload your trained model to Hugging Face Hub for easy sharing and deployment">
+                        <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
+                      </Tooltip>
+                    </div>
+
+                    {trainingConfig.push_to_hub && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="space-y-2"
+                      >
+                        <label htmlFor="hubModelId" className="block text-sm font-medium">
+                          Repository ID
+                        </label>
+                        <input
+                          type="text"
+                          id="hubModelId"
+                          value={trainingConfig.hub_model_id}
+                          onChange={(e) => setTrainingConfig(prev => ({ ...prev, hub_model_id: e.target.value }))}
+                          className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent ${
+                            trainingConfig.hub_model_id && !validateHubModelId(trainingConfig.hub_model_id).isValid
+                              ? 'border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20'
+                              : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800'
+                          }`}
+                          placeholder="username/repository-name"
+                        />
+                        <div className="space-y-1">
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            <strong>Format:</strong> username/repository-name
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            <strong>Example:</strong> myusername/my-fine-tuned-model
+                          </p>
+                          {trainingConfig.hub_model_id && !validateHubModelId(trainingConfig.hub_model_id).isValid && (
+                            <p className="text-xs text-red-600 dark:text-red-400 flex items-center">
+                              <AlertCircle className="h-3 w-3 mr-1" />
+                              {validateHubModelId(trainingConfig.hub_model_id).error}
+                            </p>
+                          )}
+                          {trainingConfig.hub_model_id && validateHubModelId(trainingConfig.hub_model_id).isValid && (
+                            <p className="text-xs text-green-600 dark:text-green-400 flex items-center">
+                              <Check className="h-3 w-3 mr-1" />
+                              Valid repository ID format
+                            </p>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1953,6 +2037,12 @@ export default function ConfigureTuning() {
               <div className="space-y-1">
                 <p className="text-sm font-medium">Output</p>
                 <p className="text-sm text-gray-700 dark:text-gray-300">{parameters.modelName}</p>
+                {trainingConfig.push_to_hub && trainingConfig.hub_model_id && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <span className="text-xs text-blue-600 dark:text-blue-400">🤗 Push to Hub:</span>
+                    <span className="text-xs text-gray-600 dark:text-gray-400">{trainingConfig.hub_model_id}</span>
+                  </div>
+                )}
               </div>
               
               <div className="pt-2 border-t border-gray-200 dark:border-gray-700">

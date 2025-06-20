@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../components/ui/Button';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import ColumnMappingInterface from '../components/ui/ColumnMappingInterface';
+import { SaveDatasetModal } from '../components/ui/SaveDatasetModal';
 import { 
   Upload, 
   Database, 
@@ -52,6 +53,10 @@ export const DataPreparation: React.FC = () => {
   const [columnInfo, setColumnInfo] = useState<Record<string, ColumnInfo>>({});
   const [availableColumns, setAvailableColumns] = useState<string[]>([]);
   const [previewDataset, setPreviewDataset] = useState<ProcessedDataset | null>(null);
+  
+  // Modal state
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [pendingMapping, setPendingMapping] = useState<ColumnMapping | null>(null);
 
   useEffect(() => {
     loadDatasets();
@@ -97,7 +102,7 @@ export const DataPreparation: React.FC = () => {
     }
   };
 
-  const handleMappingComplete = async (mapping: ColumnMapping, datasetName: string, description?: string) => {
+  const handleMappingComplete = async (mapping: ColumnMapping, datasetName: string, description?: string, tags: string[] = []) => {
     try {
       setIsLoading(true);
       setError(null);
@@ -111,7 +116,7 @@ export const DataPreparation: React.FC = () => {
         description: description || '',
         source_file_id: uploadedFile.file_id,
         column_mapping: mapping,
-        tags: []
+        tags: tags
       };
       
       const result = await datasetService.createDataset(createRequest);
@@ -164,6 +169,19 @@ export const DataPreparation: React.FC = () => {
     } catch (err: any) {
       setError(err.message || 'Failed to duplicate dataset');
     }
+  };
+
+  const handleModalSave = async (name: string, description: string, tags: string[]) => {
+    if (pendingMapping) {
+      setShowSaveModal(false);
+      await handleMappingComplete(pendingMapping, name, description, tags);
+      setPendingMapping(null);
+    }
+  };
+
+  const handleModalClose = () => {
+    setShowSaveModal(false);
+    setPendingMapping(null);
   };
 
   const filteredDatasets = datasets.filter(dataset => {
@@ -511,15 +529,8 @@ export const DataPreparation: React.FC = () => {
           availableColumns={availableColumns}
           columnInfo={columnInfo}
           onMappingComplete={(mapping) => {
-            const suggestedName = datasetService.generateDatasetName(
-              uploadedFile.metadata?.original_filename || 'dataset',
-              mapping
-            );
-            const datasetName = prompt('Enter dataset name:', suggestedName);
-            if (datasetName) {
-              const description = prompt('Enter dataset description (optional):');
-              handleMappingComplete(mapping, datasetName, description || undefined);
-            }
+            setPendingMapping(mapping);
+            setShowSaveModal(true);
           }}
           onCancel={() => setCurrentView('upload')}
         />
@@ -635,6 +646,23 @@ export const DataPreparation: React.FC = () => {
           {currentView === 'preview' && <PreviewView />}
         </motion.div>
       </AnimatePresence>
+
+      {/* Save Dataset Modal */}
+      <SaveDatasetModal
+        isOpen={showSaveModal}
+        onClose={handleModalClose}
+        onSave={handleModalSave}
+        isLoading={isLoading}
+        suggestedName={
+          uploadedFile && pendingMapping
+            ? datasetService.generateDatasetName(
+                uploadedFile.metadata?.original_filename || 'dataset',
+                pendingMapping
+              )
+            : ''
+        }
+        sourceFilename={uploadedFile?.metadata?.original_filename || ''}
+      />
     </div>
   );
 };

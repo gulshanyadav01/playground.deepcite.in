@@ -250,30 +250,11 @@ export const ColumnMappingInterface: React.FC<ColumnMappingInterfaceProps> = ({
         return;
       }
 
-      const response = await fetch(`/api/files/${fileId}/map-columns`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          file_id: fileId,
-          column_mapping: mapping
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      if (result.success) {
-        onMappingComplete(mapping);
-      } else {
-        throw new Error(result.message || 'Failed to save mapping');
-      }
+      // Pass the validated mapping to parent component
+      onMappingComplete(mapping);
       
     } catch (err: any) {
-      setError(err.message || 'Failed to save mapping');
+      setError(err.message || 'Failed to validate mapping');
     }
   };
 
