@@ -317,7 +317,7 @@ class EvaluationService {
 
     // Check required fields
     const requiredFields = ['instruction', 'output'];
-    const optionalFields = ['input'];
+    // const optionalFields = ['input'];
 
     for (let i = 0; i < Math.min(data.length, 10); i++) {
       const row = data[i];
