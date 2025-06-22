@@ -36,6 +36,7 @@ type DataSource = 'upload' | 'dataset';
 
 export const UploadData: React.FC = () => {
   const { state, dispatch, completeCurrentStep } = useConfigureContext();
+  
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState<UploadStep>('select-source');
   const [dataSource, setDataSource] = useState<DataSource>('upload');
