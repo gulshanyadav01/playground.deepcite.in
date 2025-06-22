@@ -16,7 +16,6 @@ import {
   Database,
   Search,
   Eye,
-  Calendar,
   Tag,
   Plus
 } from 'lucide-react';
@@ -25,7 +24,6 @@ import {
   FileUploadResponse, 
   ColumnMapping, 
   ColumnInfo,
-  TrainingExample,
   ProcessedFileResponse
 } from '../../services/fileService';
 import { 
