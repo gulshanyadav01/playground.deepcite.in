@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 import { ModelInfo } from '../../components/models/ModelCard';
 import { evaluationService } from '../../services/evaluationService';
 
+
 export default function Metrics() {
   const navigate = useNavigate();
   const [jobStatus, setJobStatus] = useState<'queued' | 'running' | 'completed' | 'failed' | null>(null);
