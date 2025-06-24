@@ -21,13 +21,18 @@ import {
   Calendar,
   Users,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Settings,
+  ChevronUp,
+  ChevronDown,
+  Target
 } from 'lucide-react';
 import { 
   fileService, 
   FileUploadResponse, 
   ColumnMapping, 
-  ColumnInfo
+  ColumnInfo,
+  TrainingExample
 } from '../services/fileService';
 import { 
   datasetService, 
@@ -538,97 +543,362 @@ export const DataPreparation: React.FC = () => {
     </div>
   );
 
-  const PreviewView = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-          Dataset Created Successfully
-        </h2>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setCurrentView('list')}>
-            Back to Datasets
-          </Button>
-          {previewDataset && (
-            <Button onClick={() => handleDownloadDataset(previewDataset.dataset_id)}>
-              <Download className="h-4 w-4 mr-2" />
-              Download Dataset
+  const PreviewView = () => {
+    const [previewData, setPreviewData] = useState<TrainingExample[]>([]);
+    const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+    const [showMappingDetails, setShowMappingDetails] = useState(false);
+
+    // Load preview data when component mounts or dataset changes
+    useEffect(() => {
+      if (previewDataset) {
+        loadDatasetPreview();
+      }
+    }, [previewDataset]);
+
+    const loadDatasetPreview = async () => {
+      if (!previewDataset) return;
+      
+      try {
+        setIsLoadingPreview(true);
+        const result = await datasetService.previewDataset(previewDataset.dataset_id, 5);
+        setPreviewData(result.preview_data || []);
+      } catch (err: any) {
+        console.error('Failed to load preview data:', err);
+        setPreviewData([]);
+      } finally {
+        setIsLoadingPreview(false);
+      }
+    };
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            Dataset Details
+          </h2>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setCurrentView('list')}>
+              Back to Datasets
             </Button>
-          )}
+            {previewDataset && (
+              <Button onClick={() => handleDownloadDataset(previewDataset.dataset_id)}>
+                <Download className="h-4 w-4 mr-2" />
+                Download Dataset
+              </Button>
+            )}
+          </div>
         </div>
+
+        {previewDataset && (
+          <>
+            {/* Dataset Overview */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Database className="h-5 w-5 mr-2 text-blue-500" />
+                  {previewDataset.name}
+                </CardTitle>
+                {previewDataset.description && (
+                  <p className="text-gray-600 dark:text-gray-400 mt-2">
+                    {previewDataset.description}
+                  </p>
+                )}
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                      {previewDataset.total_examples.toLocaleString()}
+                    </div>
+                    <div className="text-sm text-green-800 dark:text-green-200">
+                      Training Examples
+                    </div>
+                  </div>
+                  
+                  <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                      {previewDataset.processing_stats.success_rate.toFixed(1)}%
+                    </div>
+                    <div className="text-sm text-blue-800 dark:text-blue-200">
+                      Success Rate
+                    </div>
+                  </div>
+                  
+                  <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                      {datasetService.formatFileSize(previewDataset.file_size)}
+                    </div>
+                    <div className="text-sm text-purple-800 dark:text-purple-200">
+                      File Size
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+                  <h4 className="font-medium mb-2">Processing Statistics:</h4>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-600 dark:text-gray-400">Input Rows:</span>
+                      <span className="ml-2 font-medium">
+                        {previewDataset.processing_stats.total_input_rows.toLocaleString()}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600 dark:text-gray-400">Valid Outputs:</span>
+                      <span className="ml-2 font-medium">
+                        {previewDataset.processing_stats.valid_output_rows.toLocaleString()}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600 dark:text-gray-400">Skipped Rows:</span>
+                      <span className="ml-2 font-medium">
+                        {previewDataset.processing_stats.skipped_rows.toLocaleString()}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600 dark:text-gray-400">Avg Instruction Length:</span>
+                      <span className="ml-2 font-medium">
+                        {Math.round(previewDataset.processing_stats.instruction_stats.avg_length)} chars
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {previewDataset.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Tags:</span>
+                    {previewDataset.tags.map((tag, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200"
+                      >
+                        <Tag className="h-3 w-3 mr-1" />
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Column Mapping Details */}
+            <Card>
+              <CardHeader>
+                <CardTitle 
+                  className="flex items-center justify-between cursor-pointer"
+                  onClick={() => setShowMappingDetails(!showMappingDetails)}
+                >
+                  <div className="flex items-center">
+                    <Settings className="h-5 w-5 mr-2" />
+                    Column Mapping Configuration
+                  </div>
+                  {showMappingDetails ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                </CardTitle>
+              </CardHeader>
+              <AnimatePresence>
+                {showMappingDetails && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <CardContent className="space-y-4">
+                      {/* Source Information */}
+                      <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+                        <h4 className="font-medium mb-2">Source File:</h4>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          {previewDataset.source_filename}
+                        </p>
+                      </div>
+
+                      {/* Static Instruction */}
+                      {previewDataset.column_mapping.static_instruction && (
+                        <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+                          <h4 className="font-medium mb-2 text-blue-800 dark:text-blue-200">Static Instruction:</h4>
+                          <p className="text-sm text-blue-700 dark:text-blue-300">
+                            {previewDataset.column_mapping.static_instruction}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Column Mappings */}
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                        {/* Instruction Columns */}
+                        <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+                          <h4 className="font-medium mb-2 text-blue-800 dark:text-blue-200 flex items-center">
+                            <FileText className="h-4 w-4 mr-2" />
+                            Instruction Columns
+                          </h4>
+                          {previewDataset.column_mapping.instruction_columns.length > 0 ? (
+                            <div className="space-y-2">
+                              {previewDataset.column_mapping.instruction_columns.map((col, idx) => (
+                                <div key={idx} className="text-sm">
+                                  <span className="font-medium">{col.column_name}</span>
+                                  <span className="text-blue-600 dark:text-blue-400 ml-2">
+                                    ({col.role}, weight: {col.weight})
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-blue-600 dark:text-blue-400 italic">No columns mapped</p>
+                          )}
+                        </div>
+
+                        {/* Input Columns */}
+                        <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
+                          <h4 className="font-medium mb-2 text-green-800 dark:text-green-200 flex items-center">
+                            <Database className="h-4 w-4 mr-2" />
+                            Input Columns
+                          </h4>
+                          {previewDataset.column_mapping.input_columns.length > 0 ? (
+                            <div className="space-y-2">
+                              {previewDataset.column_mapping.input_columns.map((col, idx) => (
+                                <div key={idx} className="text-sm">
+                                  <span className="font-medium">{col.column_name}</span>
+                                  <span className="text-green-600 dark:text-green-400 ml-2">
+                                    ({col.role}, {col.format_type})
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-green-600 dark:text-green-400 italic">No columns mapped</p>
+                          )}
+                        </div>
+
+                        {/* Output Columns */}
+                        <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-lg">
+                          <h4 className="font-medium mb-2 text-orange-800 dark:text-orange-200 flex items-center">
+                            <Target className="h-4 w-4 mr-2" />
+                            Output Columns
+                          </h4>
+                          {previewDataset.column_mapping.output_columns.length > 0 ? (
+                            <div className="space-y-2">
+                              {previewDataset.column_mapping.output_columns.map((col, idx) => (
+                                <div key={idx} className="text-sm">
+                                  <span className="font-medium">{col.column_name}</span>
+                                  <span className="text-orange-600 dark:text-orange-400 ml-2">
+                                    ({col.role}, {col.format_type})
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-orange-600 dark:text-orange-400 italic">No columns mapped</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Templates */}
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {previewDataset.column_mapping.instruction_template && (
+                          <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+                            <h4 className="font-medium mb-2">Instruction Template:</h4>
+                            <pre className="text-xs bg-white dark:bg-gray-900 p-2 rounded border overflow-x-auto">
+                              {previewDataset.column_mapping.instruction_template}
+                            </pre>
+                          </div>
+                        )}
+
+                        {previewDataset.column_mapping.output_template && (
+                          <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+                            <h4 className="font-medium mb-2">Output Template:</h4>
+                            <pre className="text-xs bg-white dark:bg-gray-900 p-2 rounded border overflow-x-auto">
+                              {previewDataset.column_mapping.output_template}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Ignored Columns */}
+                      {previewDataset.column_mapping.ignored_columns && previewDataset.column_mapping.ignored_columns.length > 0 && (
+                        <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg">
+                          <h4 className="font-medium mb-2 text-red-800 dark:text-red-200">Ignored Columns:</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {previewDataset.column_mapping.ignored_columns.map((col, idx) => (
+                              <span key={idx} className="text-xs bg-red-100 dark:bg-red-800 text-red-800 dark:text-red-200 px-2 py-1 rounded">
+                                {col}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </Card>
+
+            {/* Sample Data Preview */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Eye className="h-5 w-5 mr-2" />
+                  Sample Training Data
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {isLoadingPreview ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600 mr-2"></div>
+                    <span className="text-gray-600 dark:text-gray-400">Loading sample data...</span>
+                  </div>
+                ) : previewData.length > 0 ? (
+                  <div className="space-y-4">
+                    {previewData.map((example, index) => (
+                      <div key={index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                          <div>
+                            <h4 className="font-medium text-sm text-blue-600 dark:text-blue-400 mb-2">
+                              Instruction:
+                            </h4>
+                            <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded text-sm max-h-32 overflow-y-auto">
+                              {example.instruction}
+                            </div>
+                          </div>
+                          <div>
+                            <h4 className="font-medium text-sm text-green-600 dark:text-green-400 mb-2">
+                              Input:
+                            </h4>
+                            <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded text-sm max-h-32 overflow-y-auto">
+                              {typeof example.input === 'string' 
+                                ? example.input || '(empty)'
+                                : JSON.stringify(example.input, null, 2)
+                              }
+                            </div>
+                          </div>
+                          <div>
+                            <h4 className="font-medium text-sm text-orange-600 dark:text-orange-400 mb-2">
+                              Output:
+                            </h4>
+                            <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded text-sm max-h-32 overflow-y-auto">
+                              {typeof example.output === 'string' 
+                                ? example.output
+                                : JSON.stringify(example.output, null, 2)
+                              }
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="text-center text-sm text-gray-500 dark:text-gray-400">
+                      Showing {previewData.length} of {previewDataset.total_examples.toLocaleString()} examples
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+                    No sample data available
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
-
-      {previewDataset && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <CheckCircle className="h-5 w-5 mr-2 text-green-500" />
-              {previewDataset.name}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                  {previewDataset.total_examples.toLocaleString()}
-                </div>
-                <div className="text-sm text-green-800 dark:text-green-200">
-                  Training Examples
-                </div>
-              </div>
-              
-              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                  {previewDataset.processing_stats.success_rate.toFixed(1)}%
-                </div>
-                <div className="text-sm text-blue-800 dark:text-blue-200">
-                  Success Rate
-                </div>
-              </div>
-              
-              <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                  {datasetService.formatFileSize(previewDataset.file_size)}
-                </div>
-                <div className="text-sm text-purple-800 dark:text-purple-200">
-                  File Size
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
-              <h4 className="font-medium mb-2">Processing Statistics:</h4>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-600 dark:text-gray-400">Input Rows:</span>
-                  <span className="ml-2 font-medium">
-                    {previewDataset.processing_stats.total_input_rows.toLocaleString()}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-gray-600 dark:text-gray-400">Valid Outputs:</span>
-                  <span className="ml-2 font-medium">
-                    {previewDataset.processing_stats.valid_output_rows.toLocaleString()}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-gray-600 dark:text-gray-400">Skipped Rows:</span>
-                  <span className="ml-2 font-medium">
-                    {previewDataset.processing_stats.skipped_rows.toLocaleString()}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-gray-600 dark:text-gray-400">Avg Instruction Length:</span>
-                  <span className="ml-2 font-medium">
-                    {Math.round(previewDataset.processing_stats.instruction_stats.avg_length)} chars
-                  </span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
