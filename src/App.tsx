@@ -3,7 +3,8 @@ import Layout from './components/layout/Layout';
 import Dashboard from './pages/Dashboard';
 import Configure from './pages/configure';
 import DataPreparation from './pages/DataPreparation';
-import Prediction from './pages/Prediction';
+import PredictionSetup from './pages/prediction/PredictionSetup';
+import PredictionProgress from './pages/prediction/PredictionProgress';
 import TuningProgress from './pages/TuningProgress';
 import TrainingSession from './pages/TrainingSession';
 import ModelQuery from './pages/ModelQuery';
@@ -20,7 +21,10 @@ function App() {
         <Route index element={<Dashboard />} />
         <Route path="configure/*" element={<Configure />} />
         <Route path="data-preparation" element={<DataPreparation />} />
-        <Route path="prediction" element={<Prediction />} />
+        <Route path="prediction">
+          <Route path="model-selection" element={<PredictionSetup />} />
+          <Route path="progress" element={<PredictionProgress />} />
+        </Route>
         <Route path="progress" element={<TuningProgress />} />
         <Route path="training/:sessionId" element={<TrainingSession />} />
         <Route path="query" element={<ModelQuery />} />
