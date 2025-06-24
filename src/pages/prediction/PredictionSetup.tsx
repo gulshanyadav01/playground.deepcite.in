@@ -1,99 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Button } from '../components/ui/Button';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '../components/ui/Card';
-import { 
-  Upload, 
-  Database, 
-  Plus, 
-  Search, 
-  Download, 
-  Eye, 
-  FileText,
-  Target,
-  Settings,
-  ChevronDown,
-  ChevronUp,
-  Play,
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  BarChart3,
-  ArrowRight,
-  Brain,
-  DownloadCloud,
-  Loader2,
-  AlertTriangle
-} from 'lucide-react';
-import { 
-  fileService, 
-  FileUploadResponse, 
-  ColumnMapping, 
-  ColumnInfo,
-  TrainingExample
-} from '../services/fileService';
-import { predictionService } from '../services/predictionService';
-import { chatApi, Model } from '../services/chatApi';
-import { AnimatedLoader } from '../components/ui/AnimatedLoader';
-import PredictionMappingInterface from '../components/ui/PredictionMappingInterface';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { ArrowRight, AlertTriangle, Upload, CheckCircle, DownloadCloud, Loader2, BarChart3 } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { chatApi, Model } from '../../services/chatApi';
+import { predictionService } from '../../services/predictionService';
+import { fileService } from '../../services/fileService';
+import { AnimatedLoader } from '../../components/ui/AnimatedLoader';
+import { PredictionMappingInterface } from '../../components/ui/PredictionMappingInterface';
 
-type PredictionMode = 'upload' | 'mapping' | 'predict' | 'results';
-
-interface ModelInfo {
-  model_id: string;
-  name: string;
-  description: string;
-  input_schema: Record<string, any>;
-  output_schema: Record<string, any>;
-  created_at: string;
-  accuracy?: number;
-  status: 'ready' | 'loading' | 'error';
-}
-
-interface PredictionJob {
-  job_id: string;
-  model_id: string;
-  file_id: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  progress: number;
-  total_rows: number;
-  processed_rows: number;
-  results?: PredictionResult[];
-  error_message?: string;
-  created_at: string;
-  completed_at?: string;
-}
-
-interface PredictionResult {
-  row_index: number;
-  input_data: Record<string, any>;
-  prediction: any;
-  confidence?: number;
-  processing_time_ms?: number;
-}
-
-interface PredictionMapping {
-  input_columns: Record<string, string>; // maps model input fields to file columns
-  preprocessing_options: {
-    normalize_text: boolean;
-    handle_missing_values: 'skip' | 'default' | 'error';
-    default_values: Record<string, any>;
-  };
-}
-
-export const Prediction: React.FC = () => {
-  const [currentMode, setCurrentMode] = useState<PredictionMode>('upload');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  
-  // Upload state
-  const [uploadedFile, setUploadedFile] = useState<FileUploadResponse | null>(null);
-  const [columnInfo, setColumnInfo] = useState<Record<string, ColumnInfo>>({});
-  const [availableColumns, setAvailableColumns] = useState<string[]>([]);
+export default function PredictionSetup() {
+  const navigate = useNavigate();
   
   // Model selection state
   const [activeTab, setActiveTab] = useState<'finetuned' | 'huggingface'>('finetuned');
-  const [availableModels, setAvailableModels] = useState<Model[]>([]);
+  const [availableModels, setAvailableModels] = useState<any[]>([]);
   const [huggingFaceModels, setHuggingFaceModels] = useState<Model[]>([]);
   const [searchResults, setSearchResults] = useState<Model[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -110,19 +32,17 @@ export const Prediction: React.FC = () => {
   const [maxTokens, setMaxTokens] = useState(150);
   const [temperature, setTemperature] = useState(0.7);
   
-  // Mapping state
-  const [predictionMapping, setPredictionMapping] = useState<PredictionMapping>({
-    input_columns: {},
-    preprocessing_options: {
-      normalize_text: true,
-      handle_missing_values: 'default',
-      default_values: {}
-    }
-  });
+  // File upload state
+  const [file, setFile] = useState<File | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [validationResult, setValidationResult] = useState<any>(null);
   
-  // Prediction state
-  const [currentJob, setCurrentJob] = useState<PredictionJob | null>(null);
-  const [predictionResults, setPredictionResults] = useState<PredictionResult[]>([]);
+  // Column mapping state
+  const [showMapping, setShowMapping] = useState(false);
+  const [fileId, setFileId] = useState<string | null>(null);
+  const [availableColumns, setAvailableColumns] = useState<string[]>([]);
+  const [columnInfo, setColumnInfo] = useState<Record<string, any>>({});
 
   // Get current models list based on active tab
   const currentModels = activeTab === 'finetuned' ? availableModels : huggingFaceModels;
@@ -155,7 +75,7 @@ export const Prediction: React.FC = () => {
       setModelError(null);
       // Use prediction service to get detailed model info for fine-tuned models
       const models = await predictionService.getAvailableModels();
-      setAvailableModels(models as any); // Type assertion for compatibility
+      setAvailableModels(models);
       
       // Set default selected models
       if (models.length > 0) {
@@ -202,22 +122,13 @@ export const Prediction: React.FC = () => {
     // Set default selected model for the tab
     const models = tab === 'finetuned' ? availableModels : huggingFaceModels;
     if (models.length > 0) {
-      setSelectedModelId(models[0].id);
+      setSelectedModelId(tab === 'finetuned' ? models[0].model_id : models[0].id);
     }
   };
 
   // Handle model selection change
   const handleModelSelection = (modelId: string) => {
     setSelectedModelId(modelId);
-    // Reset mapping when model changes
-    setPredictionMapping({
-      input_columns: {},
-      preprocessing_options: {
-        normalize_text: true,
-        handle_missing_values: 'default',
-        default_values: {}
-      }
-    });
   };
 
   // Handle search for Hugging Face models
@@ -285,144 +196,300 @@ export const Prediction: React.FC = () => {
     }
   };
 
-  const handleFileUpload = async (file: File) => {
+  const getFileType = (filename: string): string | null => {
+    const extension = filename.toLowerCase().split('.').pop();
+    if (['csv', 'json', 'jsonl'].includes(extension || '')) {
+      return extension || null;
+    }
+    return null;
+  };
+
+  const handleFileUpload = async (uploadedFile: File) => {
+    setFile(uploadedFile);
+    setError(null);
+    setValidationResult(null);
+    setIsLoading(true);
+
     try {
-      setIsLoading(true);
-      setError(null);
-      
-      const result = await fileService.uploadFile(file, file.name);
-      
-      if (result.success && result.file_id) {
-        setUploadedFile(result);
-        
-        // Get column information
-        const columnInfoResult = await fileService.getColumnInfo(result.file_id);
-        setColumnInfo(columnInfoResult.column_info);
-        setAvailableColumns(columnInfoResult.available_columns);
-        
-        setCurrentMode('mapping');
-      } else {
-        throw new Error(result.message || 'Upload failed');
+      // Validate file format
+      const fileType = getFileType(uploadedFile.name);
+      if (!fileType) {
+        setError('Unsupported file format. Please upload CSV, JSON, or JSONL files.');
+        setIsLoading(false);
+        return;
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to upload file');
+
+      // Upload file to get file ID and column information
+      const uploadResult = await fileService.uploadFile(uploadedFile, uploadedFile.name);
+      
+      if (!uploadResult.success || !uploadResult.file_id) {
+        throw new Error(uploadResult.message || 'Failed to upload file');
+      }
+
+      // Set file ID for mapping interface
+      setFileId(uploadResult.file_id);
+
+      // For small files, analyze content to get column information
+      if (uploadedFile.size < 1024 * 1024) { // Less than 1MB
+        const text = await uploadedFile.text();
+        let columns: string[] = [];
+        let mockColumnInfo: Record<string, any> = {};
+
+        if (fileType === 'csv') {
+          const lines = text.split('\n').filter(line => line.trim());
+          if (lines.length < 2) {
+            setError('CSV file must have at least a header row and one data row.');
+            setIsLoading(false);
+            return;
+          }
+          
+          // Extract column names from CSV header
+          columns = lines[0].split(',').map(col => col.trim().replace(/"/g, ''));
+          
+          // Create mock column info for CSV
+          columns.forEach(col => {
+            mockColumnInfo[col] = {
+              name: col,
+              data_type: 'string',
+              null_count: 0,
+              null_percentage: 0,
+              unique_count: lines.length - 1,
+              sample_values: lines.slice(1, 4).map(line => {
+                const values = line.split(',');
+                const colIndex = columns.indexOf(col);
+                return colIndex >= 0 ? values[colIndex]?.trim().replace(/"/g, '') : '';
+              }).filter((v: any) => v),
+              total_rows: lines.length - 1
+            };
+          });
+
+          setValidationResult({ 
+            isValid: true, 
+            totalRows: lines.length - 1,
+            fileType: 'CSV'
+          });
+        } else if (fileType === 'json') {
+          try {
+            let data = JSON.parse(text);
+            if (!Array.isArray(data)) {
+              data = [data]; // Convert single object to array
+            }
+            
+            // Extract column names from JSON objects
+            if (data.length > 0) {
+              columns = Object.keys(data[0]);
+              
+              // Create mock column info for JSON
+              columns.forEach(col => {
+                const values = data.map((item: any) => item[col]).filter((v: any) => v !== undefined && v !== null);
+                mockColumnInfo[col] = {
+                  name: col,
+                  data_type: typeof data[0][col] === 'number' ? 'number' : 'string',
+                  null_count: data.length - values.length,
+                  null_percentage: ((data.length - values.length) / data.length) * 100,
+                  unique_count: new Set(values).size,
+                  sample_values: values.slice(0, 3),
+                  total_rows: data.length
+                };
+              });
+            }
+
+            setValidationResult({
+              isValid: true,
+              totalRows: data.length,
+              fileType: 'JSON'
+            });
+          } catch (e) {
+            setError('Invalid JSON format. Please check your file.');
+            setIsLoading(false);
+            return;
+          }
+        } else if (fileType === 'jsonl') {
+          try {
+            const lines = text.split('\n').filter(line => line.trim());
+            const data = lines.map(line => JSON.parse(line));
+            
+            // Extract column names from JSONL objects
+            if (data.length > 0) {
+              columns = Object.keys(data[0]);
+              
+              // Create mock column info for JSONL
+              columns.forEach(col => {
+                const values = data.map((item: any) => item[col]).filter(v => v !== undefined && v !== null);
+                mockColumnInfo[col] = {
+                  name: col,
+                  data_type: typeof data[0][col] === 'number' ? 'number' : 'string',
+                  null_count: data.length - values.length,
+                  null_percentage: ((data.length - values.length) / data.length) * 100,
+                  unique_count: new Set(values).size,
+                  sample_values: values.slice(0, 3),
+                  total_rows: data.length
+                };
+              });
+            }
+
+            setValidationResult({
+              isValid: true,
+              totalRows: lines.length,
+              fileType: 'JSONL'
+            });
+          } catch (e) {
+            setError('Invalid JSONL format. Each line must be valid JSON.');
+            setIsLoading(false);
+            return;
+          }
+        }
+
+        // Set column information and show mapping interface
+        setAvailableColumns(columns);
+        setColumnInfo(mockColumnInfo);
+        setShowMapping(true);
+      } else {
+        // For large files, just show basic info and proceed to mapping
+        setValidationResult({
+          isValid: true,
+          totalRows: 'Large file - will validate during upload',
+          fileType: fileType.toUpperCase()
+        });
+        
+        // For large files, we'll need to get column info from the backend
+        // For now, show mapping with empty columns (this should be enhanced)
+        setAvailableColumns([]);
+        setColumnInfo({});
+        setShowMapping(true);
+      }
+    } catch (e) {
+      setError('Error processing file. Please try again.');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Handle mapping completion
+  const handleMappingComplete = async (mapping: any) => {
+    if (!selectedModel || !fileId) return;
+    
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Get model ID - for HF models use the name directly, for local models use model_id
+      const modelId = activeTab === 'huggingface' 
+        ? selectedModel.name  // Use HF model name directly
+        : selectedModel.model_id; // Use local model ID
+
+      // Start prediction job with the provided mapping
+      const response = await predictionService.startPrediction({
+        file_id: fileId,
+        model_id: modelId,
+        mapping: {
+          ...mapping,
+          preprocessing_options: {
+            ...mapping.preprocessing_options,
+            batch_size: batchSize
+          }
+        }
+      });
+
+      // Store job info and navigate to progress page
+      localStorage.setItem('predictionJobId', response.job_id);
+      localStorage.setItem('predictionModel', JSON.stringify(selectedModel));
+      
+      navigate('/prediction/progress');
+    } catch (error: any) {
+      setError(error.message || 'Failed to start prediction. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle mapping cancellation
+  const handleMappingCancel = () => {
+    setShowMapping(false);
+    setFile(null);
+    setFileId(null);
+    setAvailableColumns([]);
+    setColumnInfo({});
+    setValidationResult(null);
+    setError(null);
   };
 
   const handleStartPrediction = async () => {
-    if (!uploadedFile || !selectedModel) return;
+    if (!selectedModel || !file) return;
     
+    setIsLoading(true);
+    setError(null);
+
     try {
-      setIsLoading(true);
-      setError(null);
+      // Upload file first
+      const uploadResult = await fileService.uploadFile(file, file.name);
       
-      // Get model path - for HF models use the name directly, for local models use name
-      const modelPath = activeTab === 'huggingface' 
+      if (!uploadResult.success || !uploadResult.file_id) {
+        throw new Error(uploadResult.message || 'Failed to upload file');
+      }
+
+      // Get model ID - for HF models use the name directly, for local models use model_id
+      const modelId = activeTab === 'huggingface' 
         ? selectedModel.name  // Use HF model name directly
-        : selectedModel.name; // Use local model name
+        : selectedModel.model_id; // Use local model ID
       
-      const job = await predictionService.startPrediction({
-        file_id: uploadedFile.file_id!,
-        model_id: modelPath,
-        mapping: predictionMapping
+      // Create proper input column mapping based on model schema
+      const inputColumns: Record<string, string> = {};
+      
+      // For fine-tuned models, use the input schema to create mapping
+      if (activeTab === 'finetuned' && selectedModel.input_schema) {
+        // Map each model input field to itself (assuming file has matching columns)
+        Object.keys(selectedModel.input_schema).forEach(field => {
+          inputColumns[field] = field; // Map model field to file column with same name
+        });
+      } else {
+        // For HuggingFace models, use common default mappings
+        inputColumns['input'] = 'input'; // Default mapping
+        inputColumns['instruction'] = 'instruction'; // Common instruction field
+      }
+
+      // Start prediction job
+      const response = await predictionService.startPrediction({
+        file_id: uploadResult.file_id,
+        model_id: modelId,
+        mapping: {
+          input_columns: inputColumns,
+          preprocessing_options: {
+            normalize_text: true,
+            handle_missing_values: 'default',
+            default_values: {},
+            batch_size: batchSize
+          }
+        }
       });
+
+      // Store job info and navigate to progress page
+      localStorage.setItem('predictionJobId', response.job_id);
+      localStorage.setItem('predictionModel', JSON.stringify(selectedModel));
       
-      setCurrentJob(job);
-      setCurrentMode('predict');
-      
-      // Start polling for progress
-      pollPredictionProgress(job.job_id);
-      
-    } catch (err: any) {
-      setError(err.message || 'Failed to start prediction');
+      navigate('/prediction/progress');
+    } catch (error: any) {
+      setError(error.message || 'Failed to start prediction. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const pollPredictionProgress = async (jobId: string) => {
-    const interval = setInterval(async () => {
-      try {
-        const updatedJob = await predictionService.getPredictionStatus(jobId);
-        setCurrentJob(updatedJob);
-        
-        if (updatedJob.status === 'completed') {
-          // Load results
-          const results = await predictionService.getPredictionResults(jobId);
-          setPredictionResults(results.results);
-          setCurrentMode('results');
-          clearInterval(interval);
-        } else if (updatedJob.status === 'failed') {
-          setError(updatedJob.error_message || 'Prediction failed');
-          clearInterval(interval);
-        }
-      } catch (err: any) {
-        console.error('Error polling prediction progress:', err);
-        // Continue polling unless it's a critical error
-      }
-    }, 2000); // Poll every 2 seconds
-    
-    // Clean up interval after 10 minutes to prevent infinite polling
-    setTimeout(() => {
-      clearInterval(interval);
-    }, 10 * 60 * 1000);
-  };
+  // Show mapping interface if file is uploaded and mapping is needed
+  if (showMapping && selectedModel && fileId) {
+    return (
+      <PredictionMappingInterface
+        fileId={fileId}
+        availableColumns={availableColumns}
+        columnInfo={columnInfo}
+        selectedModel={selectedModel}
+        onMappingComplete={handleMappingComplete}
+        onCancel={handleMappingCancel}
+      />
+    );
+  }
 
-  const simulatePredictionProgress = (job: PredictionJob) => {
-    const interval = setInterval(() => {
-      setCurrentJob(prev => {
-        if (!prev || prev.status === 'completed') {
-          clearInterval(interval);
-          return prev;
-        }
-        
-        const newProcessed = Math.min(prev.processed_rows + 10, prev.total_rows);
-        const newProgress = (newProcessed / prev.total_rows) * 100;
-        
-        if (newProcessed >= prev.total_rows) {
-          // Generate mock results
-          const mockResults: PredictionResult[] = Array.from({ length: 5 }, (_, i) => ({
-            row_index: i,
-            input_data: {
-              message: `Sample message ${i + 1}`,
-              customer_type: 'premium'
-            },
-            prediction: {
-              category: ['billing', 'technical', 'general'][i % 3],
-              confidence: 0.85 + Math.random() * 0.1
-            },
-            confidence: 0.85 + Math.random() * 0.1,
-            processing_time_ms: 50 + Math.random() * 100
-          }));
-          
-          setPredictionResults(mockResults);
-          setCurrentMode('results');
-          clearInterval(interval);
-          
-          return {
-            ...prev,
-            status: 'completed',
-            progress: 100,
-            processed_rows: prev.total_rows,
-            results: mockResults,
-            completed_at: new Date().toISOString()
-          };
-        }
-        
-        return {
-          ...prev,
-          progress: newProgress,
-          processed_rows: newProcessed
-        };
-      });
-    }, 500);
-  };
-
-  const canProceedToMapping = uploadedFile && selectedModel;
-
-  const UploadView = () => (
+  return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Generate Predictions</h1>
@@ -517,7 +584,6 @@ export const Prediction: React.FC = () => {
                                 alt={`${chip.name} logo`}
                                 className="h-3 w-auto"
                                 onError={(e) => {
-                                  // Fallback to text if image fails to load
                                   e.currentTarget.style.display = 'none';
                                   e.currentTarget.nextElementSibling!.textContent = chip.name;
                                 }}
@@ -678,14 +744,14 @@ export const Prediction: React.FC = () => {
                     <div className="space-y-2">
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                         <div>Type: <span className="text-gray-700 dark:text-gray-300">Fine-tuned</span></div>
-                        <div>Status: <span className="text-green-600 dark:text-green-400">{(selectedModel as any).status || 'Ready'}</span></div>
-                        <div>Base Model: <span className="text-gray-700 dark:text-gray-300">{(selectedModel as any).base_model || 'N/A'}</span></div>
-                        <div>Version: <span className="text-gray-700 dark:text-gray-300">{(selectedModel as any).version || '1.0'}</span></div>
+                        <div>Status: <span className="text-green-600 dark:text-green-400">{selectedModel.status || 'Ready'}</span></div>
+                        <div>Base Model: <span className="text-gray-700 dark:text-gray-300">{selectedModel.base_model || 'N/A'}</span></div>
+                        <div>Version: <span className="text-gray-700 dark:text-gray-300">{selectedModel.version || '1.0'}</span></div>
                       </div>
-                      {(selectedModel as any).accuracy && (
+                      {selectedModel.accuracy && (
                         <div className="mt-2 p-2 bg-green-50 dark:bg-green-900/20 rounded">
                           <div className="text-green-800 dark:text-green-200 font-medium">
-                            Accuracy: {((selectedModel as any).accuracy * 100).toFixed(1)}%
+                            Accuracy: {(selectedModel.accuracy * 100).toFixed(1)}%
                           </div>
                         </div>
                       )}
@@ -695,12 +761,12 @@ export const Prediction: React.FC = () => {
                   <div className="text-xs text-gray-500 dark:text-gray-400">
                     <p className="font-medium mb-2">Training Information</p>
                     <div className="space-y-1">
-                      <div>Created: <span className="text-gray-700 dark:text-gray-300">{new Date((selectedModel as any).created_at).toLocaleDateString()}</span></div>
-                      {(selectedModel as any).training_session_id && (
-                        <div>Session: <span className="text-gray-700 dark:text-gray-300">{(selectedModel as any).training_session_id}</span></div>
+                      <div>Created: <span className="text-gray-700 dark:text-gray-300">{new Date(selectedModel.created_at).toLocaleDateString()}</span></div>
+                      {selectedModel.training_session_id && (
+                        <div>Session: <span className="text-gray-700 dark:text-gray-300">{selectedModel.training_session_id}</span></div>
                       )}
-                      {(selectedModel as any).model_type && (
-                        <div>Type: <span className="text-gray-700 dark:text-gray-300">{(selectedModel as any).model_type}</span></div>
+                      {selectedModel.model_type && (
+                        <div>Type: <span className="text-gray-700 dark:text-gray-300">{selectedModel.model_type}</span></div>
                       )}
                     </div>
                   </div>
@@ -708,8 +774,8 @@ export const Prediction: React.FC = () => {
                   <div className="text-xs text-gray-500 dark:text-gray-400">
                     <p className="font-medium mb-2">Input Schema</p>
                     <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded text-xs">
-                      {(selectedModel as any).input_schema ? (
-                        Object.entries((selectedModel as any).input_schema).map(([key, type]) => (
+                      {selectedModel.input_schema ? (
+                        Object.entries(selectedModel.input_schema).map(([key, type]) => (
                           <div key={key} className="flex justify-between">
                             <span className="text-gray-700 dark:text-gray-300">{key}:</span>
                             <span className="text-blue-600 dark:text-blue-400">{type as string}</span>
@@ -724,8 +790,8 @@ export const Prediction: React.FC = () => {
                   <div className="text-xs text-gray-500 dark:text-gray-400">
                     <p className="font-medium mb-2">Output Schema</p>
                     <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded text-xs">
-                      {(selectedModel as any).output_schema ? (
-                        Object.entries((selectedModel as any).output_schema).map(([key, type]) => (
+                      {selectedModel.output_schema ? (
+                        Object.entries(selectedModel.output_schema).map(([key, type]) => (
                           <div key={key} className="flex justify-between">
                             <span className="text-gray-700 dark:text-gray-300">{key}:</span>
                             <span className="text-green-600 dark:text-green-400">{type as string}</span>
@@ -791,9 +857,9 @@ export const Prediction: React.FC = () => {
                       type="file"
                       accept=".csv,.json,.jsonl"
                       onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          handleFileUpload(file);
+                        const uploadedFile = e.target.files?.[0];
+                        if (uploadedFile) {
+                          handleFileUpload(uploadedFile);
                         }
                       }}
                       className="hidden"
@@ -811,7 +877,7 @@ export const Prediction: React.FC = () => {
                       </div>
                       <div className="space-y-2 mt-3">
                         <p className="text-lg font-medium">
-                          {isLoading ? 'Uploading...' : 'Drag & drop your data file here or click to browse'}
+                          {isLoading ? 'Processing...' : 'Drag & drop your data file here or click to browse'}
                         </p>
                         <p className="text-sm text-gray-500 dark:text-gray-400">
                           {!selectedModel ? 'Select a model first' : 'Supports CSV, JSON, and JSONL files up to 50MB'}
@@ -821,16 +887,32 @@ export const Prediction: React.FC = () => {
                   </div>
                 </div>
 
-                {uploadedFile && (
+                {file && validationResult && (
                   <div className="p-4 bg-success-50 dark:bg-success-900/20 rounded-lg border border-success-200 dark:border-success-800">
                     <div className="flex items-start gap-2">
                       <CheckCircle className="h-5 w-5 text-success-500 flex-shrink-0 mt-0.5" />
                       <div>
                         <p className="text-sm font-medium text-success-800 dark:text-success-200">
-                          File Uploaded Successfully
+                          File Validated Successfully
                         </p>
                         <p className="text-sm text-success-700 dark:text-success-300 mt-1">
-                          {uploadedFile.metadata?.original_filename} ready for prediction
+                          {file.name} ({validationResult.fileType}) - {validationResult.totalRows} rows ready for prediction
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                          Error
+                        </p>
+                        <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                          {error}
                         </p>
                       </div>
                     </div>
@@ -857,11 +939,11 @@ export const Prediction: React.FC = () => {
                   variant="primary"
                   size="lg"
                   rightIcon={<ArrowRight className="h-5 w-5" />}
-                  disabled={!selectedModel || !uploadedFile || isLoading}
-                  onClick={() => setCurrentMode('mapping')}
+                  disabled={!selectedModel || !file || isLoading || !!error}
+                  onClick={handleStartPrediction}
                   className="px-8"
                 >
-                  {isLoading ? 'Processing...' : 'Next: Map Columns'}
+                  {isLoading ? 'Starting Prediction...' : 'Start Prediction'}
                 </Button>
               </div>
             </CardFooter>
@@ -870,239 +952,4 @@ export const Prediction: React.FC = () => {
       </div>
     </div>
   );
-
-  const MappingView = () => {
-    if (!uploadedFile || !selectedModel) {
-      return (
-        <div className="text-center py-8">
-          <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
-            Missing Requirements
-          </h3>
-          <p className="text-gray-600 dark:text-gray-400">
-            Please upload a file and select a model first
-          </p>
-          <Button 
-            variant="outline" 
-            onClick={() => setCurrentMode('upload')}
-            className="mt-4"
-          >
-            Back to Upload
-          </Button>
-        </div>
-      );
-    }
-
-    const handleMappingComplete = async (mapping: PredictionMapping) => {
-      setPredictionMapping(mapping);
-      
-      // Start prediction immediately after mapping is complete
-      try {
-        setIsLoading(true);
-        setError(null);
-        
-        const job = await predictionService.startPrediction({
-          file_id: uploadedFile.file_id!,
-          model_id: selectedModel.name, // Use model name instead of model_id
-          mapping: mapping
-        });
-        
-        setCurrentJob(job);
-        setCurrentMode('predict');
-        
-        // Start polling for progress
-        pollPredictionProgress(job.job_id);
-        
-      } catch (err: any) {
-        setError(err.message || 'Failed to start prediction');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    return (
-      <PredictionMappingInterface
-        fileId={uploadedFile.file_id!}
-        availableColumns={availableColumns}
-        columnInfo={columnInfo}
-        selectedModel={selectedModel as any} // Type assertion to handle Model vs ModelInfo mismatch
-        onMappingComplete={handleMappingComplete}
-        onCancel={() => setCurrentMode('upload')}
-        initialMapping={predictionMapping}
-      />
-    );
-  };
-
-  const PredictView = () => (
-    <div className="space-y-6">
-      <div className="text-center">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-          Generating Predictions
-        </h2>
-        <p className="text-gray-600 dark:text-gray-400">
-          Please wait while we process your data...
-        </p>
-      </div>
-
-      {currentJob && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Clock className="h-5 w-5 mr-2" />
-              Prediction Progress
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600 dark:text-gray-400">
-                Processing {currentJob.processed_rows} of {currentJob.total_rows} rows
-              </span>
-              <span className="text-sm font-medium">
-                {currentJob.progress.toFixed(1)}%
-              </span>
-            </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-              <div 
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${currentJob.progress}%` }}
-              />
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              Status: {currentJob.status}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-
-  const ResultsView = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-          Prediction Results
-        </h2>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setCurrentMode('upload')}>
-            New Prediction
-          </Button>
-          <Button>
-            <Download className="h-4 w-4 mr-2" />
-            Export Results
-          </Button>
-        </div>
-      </div>
-
-      {currentJob && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <CheckCircle className="h-5 w-5 mr-2 text-green-500" />
-              Prediction Completed
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                  {currentJob.total_rows}
-                </div>
-                <div className="text-sm text-green-800 dark:text-green-200">
-                  Rows Processed
-                </div>
-              </div>
-              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                  {selectedModel?.name}
-                </div>
-                <div className="text-sm text-blue-800 dark:text-blue-200">
-                  Model Used
-                </div>
-              </div>
-              <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                  {currentJob.completed_at && currentJob.created_at ? 
-                    Math.round((new Date(currentJob.completed_at).getTime() - new Date(currentJob.created_at).getTime()) / 1000) : 0}s
-                </div>
-                <div className="text-sm text-purple-800 dark:text-purple-200">
-                  Processing Time
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <BarChart3 className="h-5 w-5 mr-2" />
-            Sample Results
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {predictionResults.slice(0, 10).map((result, index) => (
-              <div key={index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div>
-                    <h4 className="font-medium text-sm text-gray-600 dark:text-gray-400 mb-2">
-                      Input Data:
-                    </h4>
-                    <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded text-sm">
-                      {JSON.stringify(result.input_data, null, 2)}
-                    </div>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-sm text-gray-600 dark:text-gray-400 mb-2">
-                      Prediction:
-                    </h4>
-                    <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded text-sm">
-                      {JSON.stringify(result.prediction, null, 2)}
-                    </div>
-                    {result.confidence && (
-                      <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        Confidence: {(result.confidence * 100).toFixed(1)}%
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-
-  return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Error Display */}
-      {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
-          <div className="flex items-center">
-            <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
-            <span className="text-red-700 dark:text-red-300">{error}</span>
-          </div>
-        </div>
-      )}
-
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={currentMode}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          transition={{ duration: 0.3 }}
-        >
-          {currentMode === 'upload' && <UploadView />}
-          {currentMode === 'mapping' && <MappingView />}
-          {currentMode === 'predict' && <PredictView />}
-          {currentMode === 'results' && <ResultsView />}
-        </motion.div>
-      </AnimatePresence>
-    </div>
-  );
-};
-
-export default Prediction;
+}
