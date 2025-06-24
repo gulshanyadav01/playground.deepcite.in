@@ -18,12 +18,17 @@ const evaluateSteps = [
   // { path: '/evaluate/compare', label: 'Compare Models' },
 ];
 
+const predictionSteps = [
+  { path: '/prediction/model-selection', label: 'Model Selection' },
+  { path: '/prediction/progress', label: 'Prediction Progress' },
+];
+
 const navItems = [
   { icon: Home, label: 'Dashboard', path: '/' },
   { icon: Database, label: 'Data Preparation', path: '/data-preparation' },
   { icon: Brain, label: 'Train', path: '/configure', subItems: trainSteps },
   { icon: LineChart, label: 'Evaluate', path: '/evaluate/test-data', subItems: evaluateSteps },
-  { icon: Target, label: 'Prediction', path: '/prediction' },
+  { icon: Target, label: 'Prediction', path: '/prediction/model-selection', subItems: predictionSteps },
   { icon: MessageSquare, label: 'Chat', path: '/query' },
   { icon: Activity, label: 'System Monitor', path: '/monitoring' },
   { icon: Settings, label: 'Settings', path: '/settings' },
@@ -35,9 +40,10 @@ export function SideNav() {
   const navigate = useNavigate();
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
 
-  // Check if current path is a training or evaluation step
+  // Check if current path is a training, evaluation, or prediction step
   const isTrainingPath = trainSteps.some(step => step.path === pathname);
   const isEvaluationPath = evaluateSteps.some(step => step.path === pathname);
+  const isPredictionPath = predictionSteps.some(step => step.path === pathname);
   
   // Expand appropriate section based on current path
   useEffect(() => {
@@ -45,8 +51,10 @@ export function SideNav() {
       setExpandedItem('/configure');
     } else if (isEvaluationPath) {
       setExpandedItem('/evaluate/test-data');
+    } else if (isPredictionPath) {
+      setExpandedItem('/prediction/model-selection');
     }
-  }, [pathname, isTrainingPath, isEvaluationPath]);
+  }, [pathname, isTrainingPath, isEvaluationPath, isPredictionPath]);
   
   return (
     <>

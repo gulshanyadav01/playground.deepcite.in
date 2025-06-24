@@ -33,10 +33,12 @@ interface ColumnInfo {
 
 interface ColumnConfig {
   column_name: string;
+  target_field?: string;
   role: 'primary' | 'context' | 'metadata';
   weight: number;
   format_type: 'text' | 'json' | 'list' | 'table';
   custom_template?: string;
+  parse_json: boolean;
 }
 
 interface ColumnMapping {
@@ -166,7 +168,8 @@ export const ColumnMappingInterface: React.FC<ColumnMappingInterfaceProps> = ({
       column_name: columnName,
       role: 'primary',
       weight: 1.0,
-      format_type: 'text'
+      format_type: 'text',
+      parse_json: false
     };
 
     setMapping(prev => {
@@ -343,13 +346,37 @@ export const ColumnMappingInterface: React.FC<ColumnMappingInterfaceProps> = ({
     </div>
   );
 
+  const updateColumnConfig = (columnName: string, type: 'instruction' | 'input' | 'output', updates: Partial<ColumnConfig>) => {
+    setMapping(prev => {
+      const updated = { ...prev };
+      
+      if (type === 'instruction') {
+        updated.instruction_columns = prev.instruction_columns.map(col =>
+          col.column_name === columnName ? { ...col, ...updates } : col
+        );
+      } else if (type === 'input') {
+        updated.input_columns = prev.input_columns.map(col =>
+          col.column_name === columnName ? { ...col, ...updates } : col
+        );
+      } else if (type === 'output') {
+        updated.output_columns = prev.output_columns.map(col =>
+          col.column_name === columnName ? { ...col, ...updates } : col
+        );
+      }
+      
+      return updated;
+    });
+  };
+
   const MappedColumnsList: React.FC<{
     title: string;
     columns: ColumnConfig[];
     onRemove: (columnName: string) => void;
+    onUpdate: (columnName: string, updates: Partial<ColumnConfig>) => void;
     icon: React.ReactNode;
     color: string;
-  }> = ({ title, columns, onRemove, icon, color }) => (
+    type: 'instruction' | 'input' | 'output';
+  }> = ({ title, columns, onRemove, onUpdate, icon, color, type }) => (
     <div className="space-y-2">
       <h4 className="font-medium text-sm flex items-center">
         {icon}
@@ -362,29 +389,58 @@ export const ColumnMappingInterface: React.FC<ColumnMappingInterfaceProps> = ({
       ) : (
         <div className="space-y-2">
           {columns.map((col, index) => (
-            <div
-              key={index}
-              className={`flex items-center justify-between ${color} p-2 rounded`}
-            >
-              <div className="flex-1">
+            <div key={index} className={`${color} p-3 rounded border`}>
+              <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium">{col.column_name}</span>
-                {columnInfo[col.column_name] && (
-                  <div className="text-xs text-gray-600 dark:text-gray-400">
-                    {columnInfo[col.column_name].data_type} • 
-                    {columnInfo[col.column_name].sample_values.length > 0 && 
-                      ` Sample: ${String(columnInfo[col.column_name].sample_values[0]).substring(0, 30)}...`
-                    }
-                  </div>
-                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onRemove(col.column_name)}
+                  className="h-6 w-6 p-0"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onRemove(col.column_name)}
-                className="h-6 w-6 p-0"
-              >
-                <X className="h-3 w-3" />
-              </Button>
+              
+              {columnInfo[col.column_name] && (
+                <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                  {columnInfo[col.column_name].data_type} • 
+                  {columnInfo[col.column_name].sample_values.length > 0 && 
+                    ` Sample: ${String(columnInfo[col.column_name].sample_values[0]).substring(0, 30)}...`
+                  }
+                </div>
+              )}
+
+              {/* Field mapping for input/output columns */}
+              {(type === 'input' || type === 'output') && (
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-xs font-medium mb-1">
+                      Target Field Name:
+                    </label>
+                    <input
+                      type="text"
+                      value={col.target_field || col.column_name}
+                      onChange={(e) => onUpdate(col.column_name, { target_field: e.target.value })}
+                      className="w-full text-xs p-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
+                      placeholder={col.column_name}
+                    />
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id={`parse-json-${col.column_name}`}
+                      checked={col.parse_json}
+                      onChange={(e) => onUpdate(col.column_name, { parse_json: e.target.checked })}
+                      className="h-3 w-3"
+                    />
+                    <label htmlFor={`parse-json-${col.column_name}`} className="text-xs">
+                      Parse as JSON
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -492,8 +548,10 @@ export const ColumnMappingInterface: React.FC<ColumnMappingInterfaceProps> = ({
               title="Selected Columns:"
               columns={mapping.instruction_columns}
               onRemove={(col) => removeColumnFromMapping(col, 'instruction')}
+              onUpdate={(col, updates) => updateColumnConfig(col, 'instruction', updates)}
               icon={<FileText className="h-4 w-4 mr-2 text-blue-500" />}
               color="bg-blue-50 dark:bg-blue-900/20"
+              type="instruction"
             />
           </CardContent>
         </Card>
@@ -511,8 +569,10 @@ export const ColumnMappingInterface: React.FC<ColumnMappingInterfaceProps> = ({
               title="Selected Columns:"
               columns={mapping.input_columns}
               onRemove={(col) => removeColumnFromMapping(col, 'input')}
+              onUpdate={(col, updates) => updateColumnConfig(col, 'input', updates)}
               icon={<Database className="h-4 w-4 mr-2 text-green-500" />}
               color="bg-green-50 dark:bg-green-900/20"
+              type="input"
             />
             <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
               {mapping.input_columns.length === 1 
@@ -538,8 +598,10 @@ export const ColumnMappingInterface: React.FC<ColumnMappingInterfaceProps> = ({
               title="Selected Columns:"
               columns={mapping.output_columns}
               onRemove={(col) => removeColumnFromMapping(col, 'output')}
+              onUpdate={(col, updates) => updateColumnConfig(col, 'output', updates)}
               icon={<Target className="h-4 w-4 mr-2 text-orange-500" />}
               color="bg-orange-50 dark:bg-orange-900/20"
+              type="output"
             />
             <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
               {mapping.output_columns.length === 1 
