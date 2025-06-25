@@ -8,6 +8,7 @@ interface Step {
   description: string;
 }
 
+
 interface StepProgressProps {
   steps: Step[];
   currentStep: number;
