@@ -30,6 +30,17 @@ export interface EvaluationResult {
   predict: string;
 }
 
+export interface EvaluationMapping {
+  input_columns: Record<string, string>; // maps model input fields to file columns
+  output_column: string; // which column contains the expected/ground truth output
+  preprocessing_options: {
+    normalize_text: boolean;
+    handle_missing_values: 'skip' | 'default' | 'error';
+    default_values: Record<string, any>;
+    batch_size?: number;
+  };
+}
+
 export interface EvaluationResponse {
   job_id: string;
   status: string;
@@ -137,6 +148,113 @@ class EvaluationService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.detail || 'Failed to start prediction job with base64');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Start a prediction job with column mapping support
+   */
+  async startPredictionJobWithMapping(
+    modelPath: string,
+    fileContent: string,
+    fileType: 'csv' | 'json' | 'jsonl',
+    mapping: EvaluationMapping,
+    batchSize: number = 50
+  ): Promise<EvaluationResponse> {
+    const response = await fetch(`${API_BASE_URL}/evaluate/predict-file`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model_path: modelPath,
+        file_content: fileContent,
+        file_type: fileType,
+        batch_size: batchSize,
+        mapping: mapping,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to start prediction job with mapping');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Analyze file columns and get column information
+   */
+  async analyzeFileColumns(
+    fileContent: string,
+    fileType: 'csv' | 'json' | 'jsonl'
+  ): Promise<{
+    columns: string[];
+    columnInfo: Record<string, {
+      name: string;
+      data_type: string;
+      null_count: number;
+      null_percentage: number;
+      unique_count: number;
+      sample_values: any[];
+      total_rows: number;
+      avg_length?: number;
+      max_length?: number;
+      min_length?: number;
+    }>;
+    totalRows: number;
+  }> {
+    const response = await fetch(`${API_BASE_URL}/evaluate/analyze-columns`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        file_content: fileContent,
+        file_type: fileType,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to analyze file columns');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Validate column mapping
+   */
+  async validateMapping(
+    fileContent: string,
+    fileType: 'csv' | 'json' | 'jsonl',
+    mapping: EvaluationMapping,
+    modelSchema: { input_schema: Record<string, any>; output_schema: Record<string, any> }
+  ): Promise<{
+    is_valid: boolean;
+    issues: string[];
+    warnings: string[];
+  }> {
+    const response = await fetch(`${API_BASE_URL}/evaluate/validate-mapping`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        file_content: fileContent,
+        file_type: fileType,
+        mapping: mapping,
+        model_schema: modelSchema,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to validate mapping');
     }
 
     return response.json();
@@ -373,6 +491,36 @@ class EvaluationService {
       default:
         return null;
     }
+  }
+
+  /**
+   * Get available models from prediction service
+   */
+  async getAvailableModels(): Promise<any[]> {
+    const response = await fetch(`${API_BASE_URL}/evaluate/models`);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to get available models');
+    }
+
+    const data = await response.json();
+    return data.models || [];
+  }
+
+  /**
+   * Get model details
+   */
+  async getModelDetails(modelId: string): Promise<any> {
+    const response = await fetch(`${API_BASE_URL}/evaluate/models/${modelId}`);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to get model details');
+    }
+
+    const data = await response.json();
+    return data.model;
   }
 }
 

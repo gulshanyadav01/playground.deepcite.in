@@ -5,9 +5,22 @@ import { cn } from '../../utils/cn';
 import { Button } from '../../components/ui/Button';
 import { useDropzone } from 'react-dropzone';
 import { Upload, FileText, AlertTriangle, ArrowRight, Brain, CheckCircle, DownloadCloud, Loader2, BarChart3 } from 'lucide-react';
-import { evaluationService } from '../../services/evaluationService';
-import { chatApi, Model } from '../../services/chatApi';
+import { evaluationService, EvaluationMapping } from '../../services/evaluationService';
 import { AnimatedLoader } from '../../components/ui/AnimatedLoader';
+import EvaluationMappingInterface from '../../components/ui/EvaluationMappingInterface';
+
+// Define Model type for evaluation
+interface Model {
+  id: string;
+  name: string;
+  description?: string;
+  size?: string;
+  family?: string;
+  isBase?: boolean;
+  input_schema?: Record<string, any>;
+  output_schema?: Record<string, any>;
+  metadata?: Record<string, any>;
+}
 
 export default function TestData() {
   const navigate = useNavigate();
@@ -38,6 +51,14 @@ export default function TestData() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationResult, setValidationResult] = useState<any>(null);
+  
+  // Mapping interface state
+  const [showMappingInterface, setShowMappingInterface] = useState(false);
+  const [fileContent, setFileContent] = useState<string>('');
+  const [fileType, setFileType] = useState<'csv' | 'json' | 'jsonl' | null>(null);
+  const [availableColumns, setAvailableColumns] = useState<string[]>([]);
+  const [columnInfo, setColumnInfo] = useState<Record<string, any>>({});
+  const [isAnalyzingFile, setIsAnalyzingFile] = useState(false);
 
   // Get current models list based on active tab
   const currentModels = activeTab === 'finetuned' ? availableModels : huggingFaceModels;
@@ -51,7 +72,7 @@ export default function TestData() {
     try {
       setIsLoadingModels(true);
       setModelError(null);
-      const models = await chatApi.fetchAvailableModels();
+      const models = await evaluationService.getAvailableModels();
       setAvailableModels(models);
       
       // Set default selected models
@@ -69,12 +90,14 @@ export default function TestData() {
     }
   };
 
-  // Load Hugging Face models function
+  // Load Hugging Face models function - for now, use same models as finetuned
   const loadHuggingFaceModels = async () => {
     try {
       setIsLoadingHFModels(true);
       setHFModelError(null);
-      const models = await chatApi.fetchHuggingFaceModels();
+      // For now, use the same models from evaluation service
+      // In the future, this could be extended to support HF models specifically
+      const models = await evaluationService.getAvailableModels();
       setHuggingFaceModels(models);
       
       // Set default selected models if switching to HF tab
@@ -118,77 +141,24 @@ export default function TestData() {
     setSelectedModelId(modelId);
   };
 
-  // Handle search for Hugging Face models
+  // Handle search for Hugging Face models - disabled for now since we're using prediction service models
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
     
-    try {
-      setIsSearching(true);
-      setSearchError(null);
-      const results = await chatApi.searchHuggingFaceModels(searchQuery.trim());
-      setSearchResults(results);
-      
-      // Update the current models list to show search results
-      setHuggingFaceModels(results);
-      
-      // Set default selected model from search results
-      if (results.length > 0) {
-        setSelectedModelId(results[0].id);
-        if (results.length > 1) {
-          setCompareModelId(results[1].id);
-        }
-      } else {
-        setSelectedModelId('');
-        setCompareModelId('');
-      }
-    } catch (error: any) {
-      console.error('Failed to search Hugging Face models:', error);
-      setSearchError(error.message || 'Search failed. Please try again.');
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
-    }
+    setSearchError('Search functionality will be available when HuggingFace models are integrated with the prediction service.');
   };
 
   // Handle chip click to search for model family
   const handleChipClick = (modelFamily: string) => {
     setSearchQuery(modelFamily);
-    // Automatically trigger search
-    setTimeout(() => {
-      handleSearchWithQuery(modelFamily);
-    }, 100);
+    setSearchError('Search functionality will be available when HuggingFace models are integrated with the prediction service.');
   };
 
   // Handle search with specific query
   const handleSearchWithQuery = async (query: string) => {
     if (!query.trim()) return;
     
-    try {
-      setIsSearching(true);
-      setSearchError(null);
-      const results = await chatApi.searchHuggingFaceModels(query.trim());
-      setSearchResults(results);
-      
-      // Update the current models list to show search results
-      setHuggingFaceModels(results);
-      
-      // Set default selected model from search results
-      if (results.length > 0) {
-        setSelectedModelId(results[0].id);
-        if (results.length > 1) {
-          setCompareModelId(results[1].id);
-        }
-      } else {
-        setSelectedModelId('');
-        setCompareModelId('');
-      }
-    } catch (error: any) {
-      console.error('Failed to search Hugging Face models:', error);
-      setSearchError(error.message || 'Search failed. Please try again.');
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
-    }
+    setSearchError('Search functionality will be available when HuggingFace models are integrated with the prediction service.');
   };
 
   // Popular model families for quick search with company logos
@@ -316,24 +286,54 @@ export default function TestData() {
     setError(null);
 
     try {
+      // Convert file to base64 and get file type
+      const content = await readFileContent(file);
+      const type = evaluationService.getFileType(file.name);
+      
+      if (!type) {
+        throw new Error('Unsupported file format');
+      }
+      
+      // Store file content and type for mapping interface
+      setFileContent(content);
+      setFileType(type);
+      
+      // Analyze file columns
+      setIsAnalyzingFile(true);
+      const analysis = await evaluationService.analyzeFileColumns(content, type);
+      setAvailableColumns(analysis.columns);
+      setColumnInfo(analysis.columnInfo);
+      setIsAnalyzingFile(false);
+      
+      // Show mapping interface
+      setShowMappingInterface(true);
+      
+    } catch (error: any) {
+      setError(error.message || 'Failed to analyze file. Please try again.');
+      setIsAnalyzingFile(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleMappingComplete = async (mapping: EvaluationMapping) => {
+    if (!selectedModel || !fileContent || !fileType) return;
+    
+    setIsLoading(true);
+    setError(null);
+
+    try {
       // Get model path - for HF models use the name directly, for local models use name
       const modelPath = activeTab === 'huggingface' 
         ? selectedModel.name  // Use HF model name directly
         : selectedModel.name; // Use local model name
       
-      // Convert file to base64 (same as training module)
-      const fileContent = await readFileContent(file);
-      const fileType = evaluationService.getFileType(file.name);
-      
-      if (!fileType) {
-        throw new Error('Unsupported file format');
-      }
-      
-      // Start prediction job with base64 content (same pattern as training)
-      const response = await evaluationService.startPredictionJobWithBase64(
+      // Start prediction job with mapping
+      const response = await evaluationService.startPredictionJobWithMapping(
         modelPath,
         fileContent,
         fileType,
+        mapping,
         batchSize
       );
 
@@ -349,10 +349,50 @@ export default function TestData() {
     }
   };
 
+  const handleMappingCancel = () => {
+    setShowMappingInterface(false);
+    setFileContent('');
+    setFileType(null);
+    setAvailableColumns([]);
+    setColumnInfo({});
+  };
+
   // Load available models on component mount
   useEffect(() => {
     loadModels();
   }, []);
+
+  // Convert Model to ModelInfo for the mapping interface
+  const convertModelToModelInfo = (model: Model) => {
+    return {
+      model_id: model.id,
+      name: model.name,
+      description: model.description || '',
+      input_schema: (model as any).input_schema || { instruction: 'string', input: 'string' },
+      output_schema: (model as any).output_schema || { response: 'string' },
+      created_at: (model as any).created_at || new Date().toISOString(),
+      accuracy: (model as any).accuracy,
+      status: 'ready' as const,
+      training_session_id: (model as any).training_session_id,
+      model_type: (model as any).model_type,
+      version: (model as any).version,
+      metadata: (model as any).metadata
+    };
+  };
+
+  // Show mapping interface if needed
+  if (showMappingInterface && selectedModel && fileContent && fileType) {
+    return (
+      <EvaluationMappingInterface
+        fileId="temp-file-id"
+        availableColumns={availableColumns}
+        columnInfo={columnInfo}
+        selectedModel={convertModelToModelInfo(selectedModel)}
+        onMappingComplete={handleMappingComplete}
+        onCancel={handleMappingCancel}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
