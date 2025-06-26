@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from './Button';
 import { Card, CardHeader, CardTitle, CardContent } from './Card';
@@ -55,9 +55,14 @@ interface ColumnInfo {
   min_length?: number;
 }
 
+interface OutputField {
+  jsonField: string;
+  csvColumn: string;
+}
+
 interface EvaluationMapping {
   input_columns: Record<string, string>; // maps model input fields to file columns
-  output_column: string; // which column contains the expected/ground truth output
+  output_columns: Record<string, string>; // maps JSON fields to CSV columns
   preprocessing_options: {
     normalize_text: boolean;
     handle_missing_values: 'skip' | 'default' | 'error';
@@ -88,7 +93,7 @@ export const EvaluationMappingInterface: React.FC<EvaluationMappingInterfaceProp
   const [mapping, setMapping] = useState<EvaluationMapping>(
     initialMapping || {
       input_columns: {},
-      output_column: '',
+      output_columns: {},
       preprocessing_options: {
         normalize_text: true,
         handle_missing_values: 'default',
@@ -98,9 +103,181 @@ export const EvaluationMappingInterface: React.FC<EvaluationMappingInterfaceProp
     }
   );
 
+  const [outputFields, setOutputFields] = useState<OutputField[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationResult, setValidationResult] = useState<any>(null);
+
+  // Reset mapping when model changes
+  useEffect(() => {
+    setMapping({
+      input_columns: {},
+      output_columns: {},
+      preprocessing_options: {
+        normalize_text: true,
+        handle_missing_values: 'default',
+        default_values: {},
+        batch_size: 32
+      }
+    });
+    setValidationResult(null);
+    setError(null);
+  }, [selectedModel.model_id]);
+
+  // Initialize output fields from model schema - only run when model changes
+  useEffect(() => {
+    // Initialize output fields based on model schema, not mapping
+    const modelOutputFields = Object.keys(selectedModel.output_schema);
+    if (modelOutputFields.length > 0) {
+      const fields = modelOutputFields.map(field => ({
+        jsonField: field,
+        csvColumn: ''
+      }));
+      setOutputFields(fields);
+    } else {
+      setOutputFields([{ jsonField: '', csvColumn: '' }]);
+    }
+  }, [selectedModel.model_id]);
+
+  const validateMapping = async () => {
+    try {
+      setError(null);
+      
+      // Check if all required model inputs are mapped
+      const requiredFields = Object.keys(selectedModel.input_schema);
+      const mappedFields = Object.keys(mapping.input_columns);
+      const missingFields = requiredFields.filter(field => !mapping.input_columns[field]);
+      
+      const issues: string[] = [];
+      const warnings: string[] = [];
+      
+      if (missingFields.length > 0) {
+        issues.push(`Missing mappings for required input fields: ${missingFields.join(', ')}`);
+      }
+      
+      // Check if at least one output field is mapped
+      if (Object.keys(mapping.output_columns).length === 0) {
+        issues.push('At least one output field must be mapped for evaluation');
+      }
+      
+      // Check if mapped columns exist in file
+      const invalidInputMappings = Object.entries(mapping.input_columns)
+        .filter(([_, fileColumn]) => !availableColumns.includes(fileColumn));
+      
+      if (invalidInputMappings.length > 0) {
+        issues.push(`Invalid input column mappings: ${invalidInputMappings.map(([field, col]) => `${field} -> ${col}`).join(', ')}`);
+      }
+      
+      // Check if output columns exist
+      const invalidOutputMappings = Object.entries(mapping.output_columns)
+        .filter(([_, fileColumn]) => !availableColumns.includes(fileColumn));
+      
+      if (invalidOutputMappings.length > 0) {
+        issues.push(`Invalid output column mappings: ${invalidOutputMappings.map(([field, col]) => `${field} -> ${col}`).join(', ')}`);
+      }
+      
+      setValidationResult({
+        is_valid: issues.length === 0,
+        issues,
+        warnings
+      });
+      
+      return issues.length === 0;
+      
+    } catch (err: any) {
+      setError(err.message || 'Failed to validate mapping');
+      return false;
+    }
+  };
+
+  const handleColumnMapping = (modelField: string, fileColumn: string) => {
+    setMapping(prev => ({
+      ...prev,
+      input_columns: {
+        ...prev.input_columns,
+        [modelField]: fileColumn
+      }
+    }));
+  };
+
+  const handleOutputColumnMapping = (outputField: string, fileColumn: string) => {
+    setMapping(prev => ({
+      ...prev,
+      output_columns: {
+        ...prev.output_columns,
+        [outputField]: fileColumn
+      }
+    }));
+  };
+
+  const addOutputField = () => {
+    setOutputFields([...outputFields, { jsonField: '', csvColumn: '' }]);
+  };
+
+  const removeOutputField = (index: number) => {
+    if (outputFields.length > 1) {
+      setOutputFields(outputFields.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateOutputField = (index: number, key: keyof OutputField, value: string) => {
+    const updated = [...outputFields];
+    updated[index] = { ...updated[index], [key]: value };
+    setOutputFields(updated);
+  };
+
+  const getAvailableCsvColumns = (currentIndex: number) => {
+    const usedColumns = outputFields
+      .map((field, index) => index !== currentIndex ? field.csvColumn : '')
+      .filter(Boolean);
+    
+    return availableColumns.filter(col => !usedColumns.includes(col));
+  };
+
+  // Get all currently used columns across both input and output mappings
+  const getAllUsedColumns = () => {
+    const inputUsedColumns = Object.values(mapping.input_columns).filter(Boolean);
+    const outputUsedColumns = Object.values(mapping.output_columns).filter(Boolean);
+    return [...inputUsedColumns, ...outputUsedColumns];
+  };
+
+  // Get available columns for input field dropdown (excluding already used columns)
+  const getAvailableInputColumns = (currentField: string) => {
+    const usedColumns = getAllUsedColumns();
+    const currentlySelected = mapping.input_columns[currentField];
+    
+    return availableColumns.filter(col => 
+      !usedColumns.includes(col) || col === currentlySelected
+    );
+  };
+
+  // Get available columns for output field dropdown (excluding already used columns)
+  const getAvailableOutputColumns = (currentField: string) => {
+    const usedColumns = getAllUsedColumns();
+    const currentlySelected = mapping.output_columns[currentField];
+    
+    return availableColumns.filter(col => 
+      !usedColumns.includes(col) || col === currentlySelected
+    );
+  };
+
+  const handleSaveMapping = async () => {
+    try {
+      setError(null);
+      
+      // Validate mapping first
+      const isValid = await validateMapping();
+      if (!isValid) {
+        return;
+      }
+
+      // Pass the validated mapping to parent component
+      onMappingComplete(mapping);
+      
+    } catch (err: any) {
+      setError(err.message || 'Failed to validate mapping');
+    }
+  };
 
   // Extract static instruction from model metadata
   const getStaticInstruction = () => {
@@ -138,103 +315,25 @@ export const EvaluationMappingInterface: React.FC<EvaluationMappingInterfaceProp
     return 'Process the following data';
   };
 
-  const validateMapping = async () => {
-    try {
-      setError(null);
-      
-      // Check if all required model inputs are mapped
-      const requiredFields = Object.keys(selectedModel.input_schema);
-      const mappedFields = Object.keys(mapping.input_columns);
-      const missingFields = requiredFields.filter(field => !mapping.input_columns[field]);
-      
-      const issues = [];
-      const warnings = [];
-      
-      if (missingFields.length > 0) {
-        issues.push(`Missing mappings for required input fields: ${missingFields.join(', ')}`);
-      }
-      
-      // Check if output column is selected
-      if (!mapping.output_column) {
-        issues.push('Output column must be selected for evaluation');
-      }
-      
-      // Check if mapped columns exist in file
-      const invalidInputMappings = Object.entries(mapping.input_columns)
-        .filter(([_, fileColumn]) => !availableColumns.includes(fileColumn));
-      
-      if (invalidInputMappings.length > 0) {
-        issues.push(`Invalid input column mappings: ${invalidInputMappings.map(([field, col]) => `${field} -> ${col}`).join(', ')}`);
-      }
-      
-      // Check if output column exists
-      if (mapping.output_column && !availableColumns.includes(mapping.output_column)) {
-        issues.push(`Output column '${mapping.output_column}' not found in file`);
-      }
-      
-      // Check for potential data quality issues
-      if (mapping.output_column && columnInfo[mapping.output_column]) {
-        const outputCol = columnInfo[mapping.output_column];
-        if (outputCol.null_percentage > 10) {
-          warnings.push(`Output column '${mapping.output_column}' has ${outputCol.null_percentage.toFixed(1)}% missing values`);
-        }
-        if (outputCol.unique_count < 2) {
-          warnings.push(`Output column '${mapping.output_column}' has very few unique values (${outputCol.unique_count})`);
-        }
-      }
-      
-      setValidationResult({
-        is_valid: issues.length === 0,
-        issues,
-        warnings
-      });
-      
-      return issues.length === 0;
-      
-    } catch (err: any) {
-      setError(err.message || 'Failed to validate mapping');
+  // More robust validation - using useMemo to prevent infinite loops
+  const canSave = useMemo(() => {
+    // Check if we have a valid model with schema
+    if (!selectedModel || !selectedModel.input_schema || !selectedModel.output_schema) {
       return false;
     }
-  };
-
-  const handleColumnMapping = (modelField: string, fileColumn: string) => {
-    setMapping(prev => ({
-      ...prev,
-      input_columns: {
-        ...prev.input_columns,
-        [modelField]: fileColumn
-      }
-    }));
-  };
-
-  const handleOutputColumnMapping = (fileColumn: string) => {
-    setMapping(prev => ({
-      ...prev,
-      output_column: fileColumn
-    }));
-  };
-
-  const handleSaveMapping = async () => {
-    try {
-      setError(null);
-      
-      // Validate mapping first
-      const isValid = await validateMapping();
-      if (!isValid) {
-        return;
-      }
-
-      // Pass the validated mapping to parent component
-      onMappingComplete(mapping);
-      
-    } catch (err: any) {
-      setError(err.message || 'Failed to validate mapping');
-    }
-  };
-
-  const canSave = Object.keys(selectedModel.input_schema).every(field => 
-    mapping.input_columns[field]
-  ) && mapping.output_column;
+    
+    // Check if all required input fields are mapped
+    const inputFields = Object.keys(selectedModel.input_schema);
+    const allInputsMapped = inputFields.length > 0 && inputFields.every(field => 
+      mapping.input_columns[field] && mapping.input_columns[field].trim() !== ''
+    );
+    
+    // Check if at least one output field is mapped
+    const hasOutputMapping = Object.keys(mapping.output_columns).length > 0 &&
+      Object.values(mapping.output_columns).some(column => column && column.trim() !== '');
+    
+    return allInputsMapped && hasOutputMapping;
+  }, [selectedModel, mapping.input_columns, mapping.output_columns]);
 
   const ColumnCard: React.FC<{ 
     columnName: string; 
@@ -280,7 +379,7 @@ export const EvaluationMappingInterface: React.FC<EvaluationMappingInterfaceProp
           Configure Evaluation Mapping
         </h2>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
-          Map your file columns to model inputs and specify the expected output column
+          Map your file columns to model inputs and expected output fields
         </p>
         <div className="mt-2 text-sm text-blue-600 dark:text-blue-400">
           Model: <span className="font-medium">{selectedModel.name}</span>
@@ -339,8 +438,8 @@ export const EvaluationMappingInterface: React.FC<EvaluationMappingInterfaceProp
         </div>
       )}
 
-      {/* Four Panel Layout - Instruction, Input, Output, Expected Output */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      {/* Three Panel Layout - Same as Prediction */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Panel - Instruction */}
         <Card>
           <CardHeader>
@@ -364,7 +463,7 @@ export const EvaluationMappingInterface: React.FC<EvaluationMappingInterfaceProp
           </CardContent>
         </Card>
 
-        {/* Second Panel - Input Mapping */}
+        {/* Middle Panel - Input Mapping */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -416,7 +515,7 @@ export const EvaluationMappingInterface: React.FC<EvaluationMappingInterfaceProp
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
                   >
                     <option value="">Select column from your file...</option>
-                    {availableColumns.map((column) => (
+                    {getAvailableInputColumns(field).map((column) => (
                       <option key={column} value={column}>
                         {column}
                         {columnInfo[column] && ` (${columnInfo[column].data_type})`}
@@ -452,102 +551,90 @@ export const EvaluationMappingInterface: React.FC<EvaluationMappingInterfaceProp
           </CardContent>
         </Card>
 
-        {/* Third Panel - Model Output Schema */}
+        {/* Right Panel - Output Field Mapping */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
               <Target className="h-5 w-5 mr-2 text-orange-500" />
-              Model Output
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="text-sm font-medium text-orange-800 dark:text-orange-200 mb-2">
-                Model Will Generate:
-              </div>
-              {Object.entries(selectedModel.output_schema).map(([field, type]) => (
-                <div key={field} className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{field}</span>
-                    <span className="text-xs px-2 py-1 bg-orange-100 dark:bg-orange-800 text-orange-800 dark:text-orange-200 rounded">
-                      {type as string}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-              These fields will be generated by the model and compared against your expected output.
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Fourth Panel - Expected Output Mapping */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <BarChart3 className="h-5 w-5 mr-2 text-purple-500" />
-              Expected Output
+              Output Fields ({Object.keys(selectedModel.output_schema).length})
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="bg-purple-50 dark:bg-purple-900/20 p-3 rounded-lg mb-4">
-                <div className="text-sm font-medium text-purple-800 dark:text-purple-200 mb-1">
-                  Ground Truth Column
+              {Object.keys(selectedModel.output_schema).length > 1 && (
+                <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-lg mb-4">
+                  <div className="text-sm font-medium text-orange-800 dark:text-orange-200 mb-1">
+                    Multiple Output Fields Detected
+                  </div>
+                  <div className="text-xs text-orange-700 dark:text-orange-300">
+                    This model outputs {Object.keys(selectedModel.output_schema).length} fields. Map each field to a column in your evaluation file for accuracy calculation.
+                  </div>
                 </div>
-                <div className="text-xs text-purple-700 dark:text-purple-300">
-                  Select which column contains the expected/correct outputs for evaluation.
-                </div>
-              </div>
+              )}
               
-              <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <label className="text-sm font-medium">
-                    Expected Output Column
-                  </label>
-                  <span className={`text-xs px-2 py-1 rounded ${
-                    mapping.output_column 
-                      ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
-                      : 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'
-                  }`}>
-                    {mapping.output_column ? 'Selected' : 'Required'}
-                  </span>
+              {Object.entries(selectedModel.output_schema).map(([field, type], index) => (
+                <div key={field} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center">
+                      <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded mr-2">
+                        {index + 1}
+                      </span>
+                      <label className="text-sm font-medium">
+                        {field}
+                      </label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs px-2 py-1 bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200 rounded">
+                        {type as string}
+                      </span>
+                      <span className={`text-xs px-2 py-1 rounded ${
+                        mapping.output_columns[field] 
+                          ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
+                          : 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200'
+                      }`}>
+                        {mapping.output_columns[field] ? 'Mapped' : 'Optional'}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <select
+                    value={mapping.output_columns[field] || ''}
+                    onChange={(e) => handleOutputColumnMapping(field, e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
+                  >
+                    <option value="">Select column from your file...</option>
+                    {getAvailableOutputColumns(field).map((column) => (
+                      <option key={column} value={column}>
+                        {column}
+                        {columnInfo[column] && ` (${columnInfo[column].data_type})`}
+                      </option>
+                    ))}
+                  </select>
+                  
+                  {mapping.output_columns[field] && columnInfo[mapping.output_columns[field]] && (
+                    <div className="mt-2 p-2 bg-gray-50 dark:bg-gray-800 rounded text-xs">
+                      <div className="text-gray-600 dark:text-gray-400 mb-1">Sample values from your file:</div>
+                      <div className="text-gray-800 dark:text-gray-200">
+                        {columnInfo[mapping.output_columns[field]].sample_values.slice(0, 2).map(v => String(v).substring(0, 50)).join(' • ')}
+                        {columnInfo[mapping.output_columns[field]].sample_values.length > 2 && '...'}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {!mapping.output_columns[field] && (
+                    <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      Map this field to enable accuracy calculation for this output.
+                    </div>
+                  )}
                 </div>
-                
-                <select
-                  value={mapping.output_column || ''}
-                  onChange={(e) => handleOutputColumnMapping(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
-                >
-                  <option value="">Select expected output column...</option>
-                  {availableColumns.map((column) => (
-                    <option key={column} value={column}>
-                      {column}
-                      {columnInfo[column] && ` (${columnInfo[column].data_type})`}
-                    </option>
-                  ))}
-                </select>
-                
-                {mapping.output_column && columnInfo[mapping.output_column] && (
-                  <div className="mt-2 p-2 bg-gray-50 dark:bg-gray-800 rounded text-xs">
-                    <div className="text-gray-600 dark:text-gray-400 mb-1">Sample expected outputs:</div>
-                    <div className="text-gray-800 dark:text-gray-200">
-                      {columnInfo[mapping.output_column].sample_values.slice(0, 2).map(v => String(v).substring(0, 50)).join(' • ')}
-                      {columnInfo[mapping.output_column].sample_values.length > 2 && '...'}
-                    </div>
-                    <div className="mt-1 text-gray-500 dark:text-gray-400">
-                      {columnInfo[mapping.output_column].unique_count} unique values, {columnInfo[mapping.output_column].null_percentage.toFixed(1)}% nulls
-                    </div>
-                  </div>
-                )}
-                
-                {!mapping.output_column && (
-                  <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    This column will be used as ground truth for evaluation metrics.
-                  </div>
-                )}
-              </div>
+              ))}
+            </div>
+            
+            <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+              {Object.keys(selectedModel.output_schema).length === 1 
+                ? "Single output field → Direct mapping for accuracy calculation"
+                : `${Object.keys(selectedModel.output_schema).length} output fields → Map fields you want to evaluate for accuracy`
+              }
             </div>
           </CardContent>
         </Card>

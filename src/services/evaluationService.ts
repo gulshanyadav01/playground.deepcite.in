@@ -32,13 +32,34 @@ export interface EvaluationResult {
 
 export interface EvaluationMapping {
   input_columns: Record<string, string>; // maps model input fields to file columns
-  output_column: string; // which column contains the expected/ground truth output
+  output_column?: string; // Legacy: which column contains the expected/ground truth output
+  output_columns?: Record<string, string>; // New: maps JSON fields to CSV columns
   preprocessing_options: {
     normalize_text: boolean;
     handle_missing_values: 'skip' | 'default' | 'error';
     default_values: Record<string, any>;
     batch_size?: number;
   };
+}
+
+export interface AccuracyMetrics {
+  overall_accuracy: number;
+  field_accuracies: Record<string, number>;
+  field_details: Record<string, {
+    correct: number;
+    total: number;
+    missing: number;
+    incorrect: number;
+  }>;
+  perfect_extractions: number;
+  total_records: number;
+  evaluated_fields: string[];
+}
+
+export interface AccuracyMetricsResponse {
+  status: string;
+  job_id: string;
+  metrics: AccuracyMetrics;
 }
 
 export interface EvaluationResponse {
@@ -521,6 +542,20 @@ class EvaluationService {
 
     const data = await response.json();
     return data.model;
+  }
+
+  /**
+   * Get accuracy metrics for an evaluation job
+   */
+  async getJobAccuracyMetrics(jobId: string): Promise<AccuracyMetricsResponse> {
+    const response = await fetch(`${API_BASE_URL}/evaluate/metrics/${jobId}`);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to get accuracy metrics');
+    }
+
+    return response.json();
   }
 }
 
