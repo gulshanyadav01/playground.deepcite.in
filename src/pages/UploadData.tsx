@@ -10,6 +10,7 @@ interface FileWithPreview extends File {
   preview?: string;
 }
 
+
 export default function UploadData() {
   const navigate = useNavigate();
   const [files, setFiles] = useState<FileWithPreview[]>([]);
