@@ -44,15 +44,26 @@ export interface EvaluationMapping {
 
 export interface AccuracyMetrics {
   overall_accuracy: number;
-  field_accuracies: Record<string, number>;
+  field_accuracies: Record<string, number | {
+    exact_accuracy: number;
+    fuzzy_accuracy: number;
+    prediction_coverage: number;
+    total_attempts: number;
+  }>;
   field_details: Record<string, {
     correct: number;
     total: number;
     missing: number;
     incorrect: number;
+    fuzzy_matches?: number;
   }>;
   perfect_extractions: number;
   total_records: number;
+  records_with_predictions?: number;
+  empty_predictions_excluded?: number;
+  json_parsing_success?: number;
+  json_parsing_success_rate?: number;
+  exclude_empty_predictions?: boolean;
   evaluated_fields: string[];
 }
 

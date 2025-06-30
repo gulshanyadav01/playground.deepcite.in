@@ -27,6 +27,12 @@ export default function Metrics() {
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [jobError, setJobError] = useState<string | null>(null);
   const [isPolling, setIsPolling] = useState(false);
+  const [timeEstimates, setTimeEstimates] = useState<{
+    estimatedCompletionTime?: number;
+    avgTimePerExample?: number;
+    processingSpeed?: number;
+    etaFormatted?: string;
+  }>({});
 
   useEffect(() => {
     const modelData = localStorage.getItem('evaluationModel');
@@ -64,6 +70,14 @@ export default function Metrics() {
             
             const finalProgress = progress.total_rows > 0 ? calculatedProgress : progress.progress_percentage;
             setEvaluationProgress(finalProgress);
+            
+            // Update time estimates
+            setTimeEstimates({
+              estimatedCompletionTime: progress.estimated_completion_time,
+              avgTimePerExample: progress.avg_time_per_example,
+              processingSpeed: progress.processing_speed,
+              etaFormatted: formatTimeEstimate(progress.estimated_completion_time)
+            });
           },
           2000
         );
@@ -76,11 +90,18 @@ export default function Metrics() {
           try {
             const accuracyMetrics = await evaluationService.getJobAccuracyMetrics(evaluationJobId);
             if (accuracyMetrics && accuracyMetrics.metrics) {
+              // Use enhanced metrics from backend
               setMetrics({
                 accuracy: accuracyMetrics.metrics.overall_accuracy,
                 field_accuracies: accuracyMetrics.metrics.field_accuracies,
                 perfect_extractions: accuracyMetrics.metrics.perfect_extractions,
                 examples: accuracyMetrics.metrics.total_records,
+                total_records: accuracyMetrics.metrics.total_records,
+                records_with_predictions: accuracyMetrics.metrics.records_with_predictions,
+                empty_predictions_excluded: accuracyMetrics.metrics.empty_predictions_excluded,
+                json_parsing_success: accuracyMetrics.metrics.json_parsing_success,
+                json_parsing_success_rate: accuracyMetrics.metrics.json_parsing_success_rate,
+                exclude_empty_predictions: accuracyMetrics.metrics.exclude_empty_predictions,
                 avgLatency: 120
               });
             } else {
@@ -88,6 +109,7 @@ export default function Metrics() {
               setMetrics(calculatedMetrics);
             }
           } catch (error) {
+            console.warn('Failed to get enhanced metrics, falling back to basic calculation:', error);
             const calculatedMetrics = calculateMetrics(results.results);
             setMetrics(calculatedMetrics);
           }
@@ -146,6 +168,22 @@ export default function Metrics() {
       setIsPolling(false);
     };
   }, [evaluationJobId]);
+
+  const formatTimeEstimate = (seconds?: number): string => {
+    if (!seconds || seconds <= 0) return 'Calculating...';
+    
+    if (seconds < 60) {
+      return `${Math.round(seconds)} seconds`;
+    } else if (seconds < 3600) {
+      const minutes = Math.floor(seconds / 60);
+      const remainingSeconds = Math.round(seconds % 60);
+      return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+    } else {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      return `${hours}h ${minutes}m`;
+    }
+  };
 
   const calculateMetrics = (results: any[]) => {
     if (!results || results.length === 0) {
@@ -280,6 +318,29 @@ export default function Metrics() {
                           {!jobStatus && 'Checking evaluation status...'}
                         </p>
                         
+                        {/* Time Estimates */}
+                        {isPolling && jobStatus === 'running' && timeEstimates.etaFormatted && (
+                          <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                              <div>
+                                <p className="text-gray-500 dark:text-gray-400">Estimated Time Remaining</p>
+                                <p className="font-medium">{timeEstimates.etaFormatted}</p>
+                              </div>
+                              {timeEstimates.processingSpeed && (
+                                <div>
+                                  <p className="text-gray-500 dark:text-gray-400">Processing Speed</p>
+                                  <p className="font-medium">{timeEstimates.processingSpeed.toFixed(1)} examples/min</p>
+                                </div>
+                              )}
+                            </div>
+                            {timeEstimates.avgTimePerExample && (
+                              <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                Average time per example: {timeEstimates.avgTimePerExample.toFixed(2)}s
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {isPolling && (
                           <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
                             <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -311,39 +372,116 @@ export default function Metrics() {
                 <CardContent>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Accuracy</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Overall Accuracy</p>
                       <p className="text-2xl font-semibold mt-1 text-green-600 dark:text-green-400">
                         {(metrics.accuracy * 100).toFixed(1)}%
                       </p>
+                      {metrics.records_with_predictions && metrics.total_records && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          {metrics.records_with_predictions} of {metrics.total_records} attempts
+                        </p>
+                      )}
                     </div>
                     <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Examples</p>
-                      <p className="text-2xl font-semibold mt-1">{metrics.examples}</p>
-                    </div>
-                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Perfect</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">JSON Parsing</p>
                       <p className="text-2xl font-semibold mt-1 text-blue-600 dark:text-blue-400">
+                        {metrics.json_parsing_success_rate ? (metrics.json_parsing_success_rate * 100).toFixed(1) : 'N/A'}%
+                      </p>
+                      {metrics.json_parsing_success && metrics.records_with_predictions && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          {metrics.json_parsing_success} of {metrics.records_with_predictions} parsed
+                        </p>
+                      )}
+                    </div>
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Perfect Matches</p>
+                      <p className="text-2xl font-semibold mt-1 text-purple-600 dark:text-purple-400">
                         {metrics.perfect_extractions || 0}
                       </p>
+                      {metrics.records_with_predictions && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          {((metrics.perfect_extractions || 0) / metrics.records_with_predictions * 100).toFixed(1)}% of attempts
+                        </p>
+                      )}
                     </div>
                     <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Latency</p>
-                      <p className="text-2xl font-semibold mt-1">{metrics.avgLatency}ms</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Total Records</p>
+                      <p className="text-2xl font-semibold mt-1">{metrics.examples || metrics.total_records || 0}</p>
+                      {metrics.empty_predictions_excluded && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          {metrics.empty_predictions_excluded} empty excluded
+                        </p>
+                      )}
                     </div>
                   </div>
 
+                  {/* Enhanced Field-Level Performance */}
                   {metrics.field_accuracies && Object.keys(metrics.field_accuracies).length > 0 && (
                     <div className="mt-6">
-                      <h4 className="text-sm font-medium mb-3">Field-Level Performance</h4>
+                      <h4 className="text-sm font-medium mb-3">Enhanced Field-Level Performance</h4>
                       <div className="space-y-3">
-                        {Object.entries(metrics.field_accuracies).map(([field, accuracy]: [string, any]) => (
-                          <div key={field} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                            <span className="font-mono text-sm">{field}</span>
-                            <span className="text-sm font-semibold text-green-600 dark:text-green-400">
-                              {(accuracy * 100).toFixed(1)}%
-                            </span>
-                          </div>
-                        ))}
+                        {Object.entries(metrics.field_accuracies).map(([field, fieldStats]: [string, any]) => {
+                          const isEnhanced = typeof fieldStats === 'object' && fieldStats.exact_accuracy !== undefined;
+                          const exactAccuracy = isEnhanced ? fieldStats.exact_accuracy : fieldStats;
+                          const fuzzyAccuracy = isEnhanced ? fieldStats.fuzzy_accuracy : 0;
+                          const coverage = isEnhanced ? fieldStats.prediction_coverage : 1;
+                          const attempts = isEnhanced ? fieldStats.total_attempts : metrics.examples;
+                          
+                          return (
+                            <div key={field} className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="font-mono text-sm font-medium capitalize">
+                                  {field.replace(/_/g, ' ')}
+                                </span>
+                                <span className="text-sm font-semibold text-green-600 dark:text-green-400">
+                                  {(exactAccuracy * 100).toFixed(1)}%
+                                </span>
+                              </div>
+                              
+                              {isEnhanced && (
+                                <div className="grid grid-cols-3 gap-3 text-xs">
+                                  <div>
+                                    <p className="text-gray-500 dark:text-gray-400">Exact Match</p>
+                                    <p className="font-medium">{(exactAccuracy * 100).toFixed(1)}%</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-500 dark:text-gray-400">Coverage</p>
+                                    <p className="font-medium">{(coverage * 100).toFixed(1)}%</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-500 dark:text-gray-400">Attempts</p>
+                                    <p className="font-medium">{attempts}</p>
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Progress bar for accuracy */}
+                              <div className="mt-2">
+                                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                  <div 
+                                    className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                                    style={{ width: `${exactAccuracy * 100}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Enhanced Metrics Summary */}
+                  {metrics.exclude_empty_predictions !== undefined && (
+                    <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <h4 className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">
+                        📊 Enhanced Accuracy Analysis
+                      </h4>
+                      <div className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+                        <p>✅ Empty predictions {metrics.exclude_empty_predictions ? 'excluded' : 'included'} for realistic metrics</p>
+                        <p>✅ Robust JSON parsing with {metrics.json_parsing_success_rate ? (metrics.json_parsing_success_rate * 100).toFixed(1) : 'N/A'}% success rate</p>
+                        <p>✅ Field name normalization (invoice_number → invoice_no)</p>
+                        <p>✅ Enhanced field comparison with fuzzy matching</p>
                       </div>
                     </div>
                   )}
