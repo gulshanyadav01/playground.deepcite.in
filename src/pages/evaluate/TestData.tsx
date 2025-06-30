@@ -5,9 +5,31 @@ import { cn } from '../../utils/cn';
 import { Button } from '../../components/ui/Button';
 import { useDropzone } from 'react-dropzone';
 import { Upload, FileText, AlertTriangle, ArrowRight, Brain, CheckCircle, DownloadCloud, Loader2, BarChart3 } from 'lucide-react';
-import { evaluationService } from '../../services/evaluationService';
-import { chatApi, Model } from '../../services/chatApi';
+import { evaluationService, EvaluationMapping } from '../../services/evaluationService';
 import { AnimatedLoader } from '../../components/ui/AnimatedLoader';
+import EvaluationMappingInterface from '../../components/ui/EvaluationMappingInterface';
+
+// Define Model type for evaluation
+interface Model {
+  id: string;
+  name: string;
+  description?: string;
+  size?: string;
+  family?: string;
+  isBase?: boolean;
+  input_schema?: Record<string, any>;
+  output_schema?: Record<string, any>;
+  metadata?: Record<string, any>;
+  // Additional fields from API response
+  created_at?: string;
+  accuracy?: number;
+  status?: string;
+  training_session_id?: string;
+  model_type?: string;
+  version?: string;
+  model_path?: string;
+  base_model?: string;
+}
 
 export default function TestData() {
   const navigate = useNavigate();
@@ -38,6 +60,14 @@ export default function TestData() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationResult, setValidationResult] = useState<any>(null);
+  
+  // Mapping interface state
+  const [showMappingInterface, setShowMappingInterface] = useState(false);
+  const [fileContent, setFileContent] = useState<string>('');
+  const [fileType, setFileType] = useState<'csv' | 'json' | 'jsonl' | null>(null);
+  const [availableColumns, setAvailableColumns] = useState<string[]>([]);
+  const [columnInfo, setColumnInfo] = useState<Record<string, any>>({});
+  const [isAnalyzingFile, setIsAnalyzingFile] = useState(false);
 
   // Get current models list based on active tab
   const currentModels = activeTab === 'finetuned' ? availableModels : huggingFaceModels;
@@ -46,19 +76,59 @@ export default function TestData() {
   const selectedModel = currentModels.find((m: Model) => m.id === selectedModelId);
   const compareModel = currentModels.find((m: Model) => m.id === compareModelId);
 
+  // Debug logging to see what's in the selected model
+  useEffect(() => {
+    if (selectedModel) {
+      console.log('Selected model debug info:', {
+        id: selectedModel.id,
+        name: selectedModel.name,
+        input_schema: selectedModel.input_schema,
+        output_schema: selectedModel.output_schema,
+        hasInputSchema: !!selectedModel.input_schema,
+        hasOutputSchema: !!selectedModel.output_schema,
+        inputSchemaKeys: Object.keys(selectedModel.input_schema || {}),
+        outputSchemaKeys: Object.keys(selectedModel.output_schema || {}),
+        inputSchemaLength: Object.keys(selectedModel.input_schema || {}).length,
+        outputSchemaLength: Object.keys(selectedModel.output_schema || {}).length
+      });
+    }
+  }, [selectedModel]);
+
   // Load available models function
   const loadModels = async () => {
     try {
       setIsLoadingModels(true);
       setModelError(null);
-      const models = await chatApi.fetchAvailableModels();
-      setAvailableModels(models);
+      const models = await evaluationService.getAvailableModels();
+      console.log('Raw models from evaluation service:', models);
+      
+      // Transform models to match our interface
+      const transformedModels = models.map(model => ({
+        id: model.model_id,  // Use model_id as id
+        name: model.name,
+        description: model.description,
+        input_schema: model.input_schema,
+        output_schema: model.output_schema,
+        metadata: model.metadata,
+        // Add other fields from the API response
+        created_at: model.created_at,
+        accuracy: model.accuracy,
+        status: model.status,
+        training_session_id: model.training_session_id,
+        model_type: model.model_type,
+        version: model.version,
+        model_path: model.model_path,
+        base_model: model.base_model
+      }));
+      
+      console.log('Transformed models:', transformedModels);
+      setAvailableModels(transformedModels);
       
       // Set default selected models
-      if (models.length > 0) {
-        setSelectedModelId(models[0].id);
-        if (models.length > 1) {
-          setCompareModelId(models[1].id);
+      if (transformedModels.length > 0) {
+        setSelectedModelId(transformedModels[0].id);
+        if (transformedModels.length > 1) {
+          setCompareModelId(transformedModels[1].id);
         }
       }
     } catch (error: any) {
@@ -69,12 +139,14 @@ export default function TestData() {
     }
   };
 
-  // Load Hugging Face models function
+  // Load Hugging Face models function - for now, use same models as finetuned
   const loadHuggingFaceModels = async () => {
     try {
       setIsLoadingHFModels(true);
       setHFModelError(null);
-      const models = await chatApi.fetchHuggingFaceModels();
+      // For now, use the same models from evaluation service
+      // In the future, this could be extended to support HF models specifically
+      const models = await evaluationService.getAvailableModels();
       setHuggingFaceModels(models);
       
       // Set default selected models if switching to HF tab
@@ -118,77 +190,24 @@ export default function TestData() {
     setSelectedModelId(modelId);
   };
 
-  // Handle search for Hugging Face models
+  // Handle search for Hugging Face models - disabled for now since we're using prediction service models
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
     
-    try {
-      setIsSearching(true);
-      setSearchError(null);
-      const results = await chatApi.searchHuggingFaceModels(searchQuery.trim());
-      setSearchResults(results);
-      
-      // Update the current models list to show search results
-      setHuggingFaceModels(results);
-      
-      // Set default selected model from search results
-      if (results.length > 0) {
-        setSelectedModelId(results[0].id);
-        if (results.length > 1) {
-          setCompareModelId(results[1].id);
-        }
-      } else {
-        setSelectedModelId('');
-        setCompareModelId('');
-      }
-    } catch (error: any) {
-      console.error('Failed to search Hugging Face models:', error);
-      setSearchError(error.message || 'Search failed. Please try again.');
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
-    }
+    setSearchError('Search functionality will be available when HuggingFace models are integrated with the prediction service.');
   };
 
   // Handle chip click to search for model family
   const handleChipClick = (modelFamily: string) => {
     setSearchQuery(modelFamily);
-    // Automatically trigger search
-    setTimeout(() => {
-      handleSearchWithQuery(modelFamily);
-    }, 100);
+    setSearchError('Search functionality will be available when HuggingFace models are integrated with the prediction service.');
   };
 
   // Handle search with specific query
   const handleSearchWithQuery = async (query: string) => {
     if (!query.trim()) return;
     
-    try {
-      setIsSearching(true);
-      setSearchError(null);
-      const results = await chatApi.searchHuggingFaceModels(query.trim());
-      setSearchResults(results);
-      
-      // Update the current models list to show search results
-      setHuggingFaceModels(results);
-      
-      // Set default selected model from search results
-      if (results.length > 0) {
-        setSelectedModelId(results[0].id);
-        if (results.length > 1) {
-          setCompareModelId(results[1].id);
-        }
-      } else {
-        setSelectedModelId('');
-        setCompareModelId('');
-      }
-    } catch (error: any) {
-      console.error('Failed to search Hugging Face models:', error);
-      setSearchError(error.message || 'Search failed. Please try again.');
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
-    }
+    setSearchError('Search functionality will be available when HuggingFace models are integrated with the prediction service.');
   };
 
   // Popular model families for quick search with company logos
@@ -316,24 +335,54 @@ export default function TestData() {
     setError(null);
 
     try {
+      // Convert file to base64 and get file type
+      const content = await readFileContent(file);
+      const type = evaluationService.getFileType(file.name);
+      
+      if (!type) {
+        throw new Error('Unsupported file format');
+      }
+      
+      // Store file content and type for mapping interface
+      setFileContent(content);
+      setFileType(type);
+      
+      // Analyze file columns
+      setIsAnalyzingFile(true);
+      const analysis = await evaluationService.analyzeFileColumns(content, type);
+      setAvailableColumns(analysis.columns);
+      setColumnInfo(analysis.columnInfo);
+      setIsAnalyzingFile(false);
+      
+      // Show mapping interface
+      setShowMappingInterface(true);
+      
+    } catch (error: any) {
+      setError(error.message || 'Failed to analyze file. Please try again.');
+      setIsAnalyzingFile(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleMappingComplete = async (mapping: EvaluationMapping) => {
+    if (!selectedModel || !fileContent || !fileType) return;
+    
+    setIsLoading(true);
+    setError(null);
+
+    try {
       // Get model path - for HF models use the name directly, for local models use name
       const modelPath = activeTab === 'huggingface' 
         ? selectedModel.name  // Use HF model name directly
         : selectedModel.name; // Use local model name
       
-      // Convert file to base64 (same as training module)
-      const fileContent = await readFileContent(file);
-      const fileType = evaluationService.getFileType(file.name);
-      
-      if (!fileType) {
-        throw new Error('Unsupported file format');
-      }
-      
-      // Start prediction job with base64 content (same pattern as training)
-      const response = await evaluationService.startPredictionJobWithBase64(
+      // Start prediction job with mapping
+      const response = await evaluationService.startPredictionJobWithMapping(
         modelPath,
         fileContent,
         fileType,
+        mapping,
         batchSize
       );
 
@@ -349,10 +398,50 @@ export default function TestData() {
     }
   };
 
+  const handleMappingCancel = () => {
+    setShowMappingInterface(false);
+    setFileContent('');
+    setFileType(null);
+    setAvailableColumns([]);
+    setColumnInfo({});
+  };
+
   // Load available models on component mount
   useEffect(() => {
     loadModels();
   }, []);
+
+  // Convert Model to ModelInfo for the mapping interface
+  const convertModelToModelInfo = (model: Model) => {
+    return {
+      model_id: model.id,
+      name: model.name,
+      description: model.description || '',
+      input_schema: model.input_schema || {},
+      output_schema: model.output_schema || {},
+      created_at: (model as any).created_at || new Date().toISOString(),
+      accuracy: (model as any).accuracy,
+      status: 'ready' as const,
+      training_session_id: (model as any).training_session_id,
+      model_type: (model as any).model_type,
+      version: (model as any).version,
+      metadata: model.metadata || {}
+    };
+  };
+
+  // Show mapping interface if needed
+  if (showMappingInterface && selectedModel && fileContent && fileType) {
+    return (
+      <EvaluationMappingInterface
+        fileId="temp-file-id"
+        availableColumns={availableColumns}
+        columnInfo={columnInfo}
+        selectedModel={convertModelToModelInfo(selectedModel)}
+        onMappingComplete={handleMappingComplete}
+        onCancel={handleMappingCancel}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -615,13 +704,91 @@ export default function TestData() {
               </div>
             </CardContent>
             <CardFooter className="border-t flex-col space-y-3 items-start">
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                <p className="font-medium mb-1">Selected Model Info</p>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                  <div>Size: <span className="text-gray-700 dark:text-gray-300">{selectedModel?.size || 'N/A'}</span></div>
-                  <div>Type: <span className="text-gray-700 dark:text-gray-300">{selectedModel?.isBase ? 'Base' : 'Fine-tuned'}</span></div>
+              {selectedModel && activeTab === 'finetuned' ? (
+                // Detailed info for fine-tuned models
+                <div className="w-full space-y-4">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    <p className="font-medium mb-2">Model Details</p>
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                        <div>Type: <span className="text-gray-700 dark:text-gray-300">Fine-tuned</span></div>
+                        <div>Status: <span className="text-green-600 dark:text-green-400">{selectedModel.status || 'Ready'}</span></div>
+                        <div>Base Model: <span className="text-gray-700 dark:text-gray-300">{selectedModel.base_model || 'N/A'}</span></div>
+                        <div>Version: <span className="text-gray-700 dark:text-gray-300">{selectedModel.version || '1.0'}</span></div>
+                      </div>
+                      {selectedModel.accuracy && (
+                        <div className="mt-2 p-2 bg-green-50 dark:bg-green-900/20 rounded">
+                          <div className="text-green-800 dark:text-green-200 font-medium">
+                            Accuracy: {(selectedModel.accuracy * 100).toFixed(1)}%
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    <p className="font-medium mb-2">Training Information</p>
+                    <div className="space-y-1">
+                      <div>Created: <span className="text-gray-700 dark:text-gray-300">{new Date(selectedModel.created_at || Date.now()).toLocaleDateString()}</span></div>
+                      {selectedModel.training_session_id && (
+                        <div>Session: <span className="text-gray-700 dark:text-gray-300">{selectedModel.training_session_id}</span></div>
+                      )}
+                      {selectedModel.model_type && (
+                        <div>Type: <span className="text-gray-700 dark:text-gray-300">{selectedModel.model_type}</span></div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    <p className="font-medium mb-2">Input Schema</p>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded text-xs">
+                      {selectedModel.input_schema ? (
+                        Object.entries(selectedModel.input_schema).map(([key, type]) => (
+                          <div key={key} className="flex justify-between">
+                            <span className="text-gray-700 dark:text-gray-300">{key}:</span>
+                            <span className="text-blue-600 dark:text-blue-400">{type as string}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-gray-500">No schema available</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    <p className="font-medium mb-2">Output Schema</p>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded text-xs">
+                      {selectedModel.output_schema ? (
+                        Object.entries(selectedModel.output_schema).map(([key, type]) => (
+                          <div key={key} className="flex justify-between">
+                            <span className="text-gray-700 dark:text-gray-300">{key}:</span>
+                            <span className="text-green-600 dark:text-green-400">{type as string}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-gray-500">No schema available</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : selectedModel && activeTab === 'huggingface' ? (
+                // Basic info for Hugging Face models
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  <p className="font-medium mb-1">Selected Model Info</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                    <div>Size: <span className="text-gray-700 dark:text-gray-300">{(selectedModel as any).size || 'N/A'}</span></div>
+                    <div>Type: <span className="text-gray-700 dark:text-gray-300">{(selectedModel as any).isBase ? 'Base' : 'Pre-trained'}</span></div>
+                    {(selectedModel as any).family && (
+                      <div className="col-span-2">Family: <span className="text-gray-700 dark:text-gray-300">{(selectedModel as any).family}</span></div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  <p>Select a model to view details</p>
+                </div>
+              )}
+              
               <Button
                 variant="outline"
                 size="sm"
@@ -763,7 +930,36 @@ export default function TestData() {
                   variant="primary"
                   size="lg"
                   rightIcon={<ArrowRight className="h-5 w-5" />}
-                  disabled={!selectedModel || !file || isLoading || (validationResult && !validationResult.isValid)}
+                  disabled={(() => {
+                    const hasModel = !!selectedModel;
+                    const hasFile = !!file;
+                    const notLoading = !isLoading;
+                    const validFile = !validationResult || validationResult.isValid;
+                    const hasInputSchema = selectedModel && !!selectedModel.input_schema;
+                    const hasOutputSchema = selectedModel && !!selectedModel.output_schema;
+                    const inputSchemaHasFields = selectedModel && Object.keys(selectedModel.input_schema || {}).length > 0;
+                    const outputSchemaHasFields = selectedModel && Object.keys(selectedModel.output_schema || {}).length > 0;
+                    
+                    const shouldEnable = hasModel && hasFile && notLoading && validFile && hasInputSchema && hasOutputSchema && inputSchemaHasFields && outputSchemaHasFields;
+                    
+                    console.log('Button validation debug:', {
+                      hasModel,
+                      hasFile,
+                      notLoading,
+                      validFile,
+                      hasInputSchema,
+                      hasOutputSchema,
+                      inputSchemaHasFields,
+                      outputSchemaHasFields,
+                      shouldEnable,
+                      selectedModelId,
+                      selectedModelName: selectedModel?.name,
+                      inputSchemaKeys: selectedModel ? Object.keys(selectedModel.input_schema || {}) : [],
+                      outputSchemaKeys: selectedModel ? Object.keys(selectedModel.output_schema || {}) : []
+                    });
+                    
+                    return !shouldEnable;
+                  })()}
                   onClick={handleStartEvaluation}
                   isLoading={isLoading}
                   className="px-8"
