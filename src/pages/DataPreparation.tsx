@@ -468,23 +468,23 @@ export const DataPreparation: React.FC = () => {
         <CardContent className="space-y-4">
           <div className="text-center">
             <p className="text-gray-600 dark:text-gray-400 mb-4">
-              Upload your CSV, JSON, or JSONL file containing training data
+              Upload your training data file in any supported format
             </p>
             
             <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8">
-              <input
-                type="file"
-                accept=".csv,.json,.jsonl"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    handleFileUpload(file);
-                  }
-                }}
-                className="hidden"
-                id="file-upload"
-                disabled={isLoading}
-              />
+            <input
+              type="file"
+              accept=".csv,.json,.jsonl,.xlsx,.xls,.pkl,.pickle"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  handleFileUpload(file);
+                }
+              }}
+              className="hidden"
+              id="file-upload"
+              disabled={isLoading}
+            />
               <label
                 htmlFor="file-upload"
                 className={`cursor-pointer flex flex-col items-center ${
@@ -496,7 +496,7 @@ export const DataPreparation: React.FC = () => {
                   {isLoading ? 'Uploading...' : 'Choose file to upload'}
                 </span>
                 <span className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                  Supports CSV, JSON, and JSONL files
+                  Supports CSV, JSON, JSONL, Excel, and Pickle files
                 </span>
               </label>
             </div>
@@ -510,6 +510,8 @@ export const DataPreparation: React.FC = () => {
               <li>• <strong>CSV:</strong> Comma-separated values with column headers</li>
               <li>• <strong>JSON:</strong> Array of objects or single object</li>
               <li>• <strong>JSONL:</strong> JSON Lines format (one JSON object per line)</li>
+              <li>• <strong>Excel:</strong> .xlsx and .xls files (first sheet will be used)</li>
+              <li>• <strong>Pickle:</strong> .pkl and .pickle files containing pandas DataFrames</li>
             </ul>
           </div>
         </CardContent>

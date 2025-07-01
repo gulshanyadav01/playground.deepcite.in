@@ -514,6 +514,10 @@ class FileService {
         return '📊';
       case 'jsonl':
         return '📝';
+      case 'excel':
+        return '📈';
+      case 'pickle':
+        return '🥒';
       default:
         return '📁';
     }
