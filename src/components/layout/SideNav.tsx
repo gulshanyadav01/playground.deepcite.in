@@ -32,7 +32,7 @@ const navItems = [
   { icon: MessageSquare, label: 'Chat', path: '/query' },
   { icon: Rocket, label: 'Deploy', path: '/deploy' },
   { icon: Activity, label: 'System Monitor', path: '/monitoring' },
-  { icon: Settings, label: 'Settings', path: '/settings' },
+  { icon: Settings, label: 'Settings', path: '/settings' }, 
 ];
 
 export function SideNav() {
