@@ -12,6 +12,7 @@ const trainSteps = [
   { path: '/progress', label: 'Training Progress' },
 ];
 
+
 const evaluateSteps = [
   { path: '/evaluate/test-data', label: 'Evaluate Model' },
   { path: '/evaluate/metrics', label: 'Evaluation Progress' },
