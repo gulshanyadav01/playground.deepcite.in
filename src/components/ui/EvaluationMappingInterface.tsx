@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from './Button';
 import { Card, CardHeader, CardTitle, CardContent } from './Card';
+import { Progress } from './Progress';
+import DynamicInstructionInterface from './DynamicInstructionInterface';
 import { 
   ArrowRight, 
   Eye, 
@@ -63,6 +65,13 @@ interface OutputField {
 interface EvaluationMapping {
   input_columns: Record<string, string>; // maps model input fields to file columns
   output_columns: Record<string, string>; // maps JSON fields to CSV columns
+  // Dynamic instruction configuration
+  instruction_source?: 'static' | 'column' | 'file';
+  instruction_column?: string;
+  instruction_file_content?: string;
+  instruction_file_type?: 'json' | 'csv' | 'jsonl';
+  instruction_file_mapping?: Record<string, string>;
+  static_instruction?: string;
   preprocessing_options: {
     normalize_text: boolean;
     handle_missing_values: 'skip' | 'default' | 'error';
@@ -107,6 +116,11 @@ export const EvaluationMappingInterface: React.FC<EvaluationMappingInterfaceProp
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationResult, setValidationResult] = useState<any>(null);
+  
+  // Progress tracking state
+  const [isStartingEvaluation, setIsStartingEvaluation] = useState(false);
+  const [evaluationProgress, setEvaluationProgress] = useState(0);
+  const [evaluationStatus, setEvaluationStatus] = useState<'idle' | 'validating' | 'starting' | 'complete' | 'error'>('idle');
 
   // Reset mapping when model changes
   useEffect(() => {
@@ -264,18 +278,68 @@ export const EvaluationMappingInterface: React.FC<EvaluationMappingInterfaceProp
   const handleSaveMapping = async () => {
     try {
       setError(null);
+      setIsStartingEvaluation(true);
+      setEvaluationProgress(0);
+      setEvaluationStatus('validating');
+      
+      // Simulate validation progress
+      const validationInterval = setInterval(() => {
+        setEvaluationProgress(prev => {
+          if (prev >= 30) {
+            clearInterval(validationInterval);
+            return 30;
+          }
+          return prev + Math.random() * 10;
+        });
+      }, 100);
       
       // Validate mapping first
       const isValid = await validateMapping();
+      clearInterval(validationInterval);
+      
       if (!isValid) {
+        setEvaluationStatus('error');
+        setEvaluationProgress(0);
+        setIsStartingEvaluation(false);
         return;
       }
 
-      // Pass the validated mapping to parent component
-      onMappingComplete(mapping);
+      setEvaluationProgress(50);
+      setEvaluationStatus('starting');
+      
+      // Simulate starting evaluation progress
+      const startingInterval = setInterval(() => {
+        setEvaluationProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(startingInterval);
+            return 90;
+          }
+          return prev + Math.random() * 15;
+        });
+      }, 200);
+
+      // Small delay to show progress
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      clearInterval(startingInterval);
+      setEvaluationProgress(100);
+      setEvaluationStatus('complete');
+      
+      // Small delay to show completion
+      setTimeout(() => {
+        // Pass the validated mapping to parent component
+        onMappingComplete(mapping);
+        // Reset progress state
+        setEvaluationProgress(0);
+        setEvaluationStatus('idle');
+        setIsStartingEvaluation(false);
+      }, 1000);
       
     } catch (err: any) {
       setError(err.message || 'Failed to validate mapping');
+      setEvaluationStatus('error');
+      setEvaluationProgress(0);
+      setIsStartingEvaluation(false);
     }
   };
 
@@ -438,28 +502,90 @@ export const EvaluationMappingInterface: React.FC<EvaluationMappingInterfaceProp
         </div>
       )}
 
+      {/* Evaluation Progress */}
+      {isStartingEvaluation && (
+        <Card className="bg-gray-50 dark:bg-gray-800">
+          <CardContent className="p-4">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Starting Evaluation
+                </span>
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  {evaluationStatus === 'validating' ? 'Validating Mapping' :
+                   evaluationStatus === 'starting' ? 'Initializing Evaluation' :
+                   evaluationStatus === 'complete' ? 'Complete' :
+                   evaluationStatus === 'error' ? 'Failed' : ''}
+                </span>
+              </div>
+              
+              <Progress
+                value={evaluationProgress}
+                max={100}
+                variant={
+                  evaluationStatus === 'complete' ? 'success' :
+                  evaluationStatus === 'error' ? 'error' :
+                  'primary'
+                }
+                showValue={true}
+                formatValue={(value, max) => `${Math.round(value)}%`}
+              />
+              
+              <div className="flex items-center text-sm">
+                {evaluationStatus === 'validating' && (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                    <span className="text-blue-600 dark:text-blue-400">Validating column mappings...</span>
+                  </>
+                )}
+                {evaluationStatus === 'starting' && (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600 mr-2"></div>
+                    <span className="text-purple-600 dark:text-purple-400">Initializing evaluation process...</span>
+                  </>
+                )}
+                {evaluationStatus === 'complete' && (
+                  <>
+                    <CheckCircle className="h-4 w-4 text-green-600 mr-2" />
+                    <span className="text-green-600 dark:text-green-400">Evaluation started successfully!</span>
+                  </>
+                )}
+                {evaluationStatus === 'error' && (
+                  <>
+                    <AlertCircle className="h-4 w-4 text-red-600 mr-2" />
+                    <span className="text-red-600 dark:text-red-400">Failed to start evaluation. Please try again.</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Three Panel Layout - Same as Prediction */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Panel - Instruction */}
+        {/* Left Panel - Dynamic Instructions */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
               <FileText className="h-5 w-5 mr-2 text-blue-500" />
-              Instruction
+              Instructions
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-              <div className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">
-                Static Instruction Text:
-              </div>
-              <div className="text-sm text-blue-700 dark:text-blue-300 italic">
-                "{getStaticInstruction()}"
-              </div>
-            </div>
-            <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-              This instruction will be used for all evaluations with this model.
-            </div>
+            <DynamicInstructionInterface
+              availableColumns={availableColumns}
+              instructionSource={mapping.instruction_source || 'static'}
+              instructionColumn={mapping.instruction_column}
+              staticInstruction={mapping.static_instruction || getStaticInstruction()}
+              instructionFileMapping={mapping.instruction_file_mapping}
+              onInstructionConfigChange={(config) => {
+                setMapping(prev => ({
+                  ...prev,
+                  ...config
+                }));
+              }}
+            />
           </CardContent>
         </Card>
 

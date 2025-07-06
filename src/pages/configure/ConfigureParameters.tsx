@@ -690,7 +690,7 @@ export default function ConfigureParameters() {
                       type="range"
                       id="maxSequenceLength"
                       min="128"
-                      max="2048"
+                      max="4096"
                       step="128"
                       value={parameters.maxSequenceLength}
                       onChange={(e) => handleParameterChange('maxSequenceLength', parseInt(e.target.value))}
@@ -700,10 +700,10 @@ export default function ConfigureParameters() {
                       <input
                         type="number"
                         min="128"
-                        max="2048"
+                        max="4096"
                         step="128"
                         value={parameters.maxSequenceLength}
-                        onChange={(e) => handleNumberInputChange('maxSequenceLength', e.target.value, 128, 2048, true)}
+                        onChange={(e) => handleNumberInputChange('maxSequenceLength', e.target.value, 128, 4096, true)}
                         onBlur={(e) => handleNumberInputBlur('maxSequenceLength', e.target.value, 128, 2048, true)}
                         onFocus={handleInputFocus}
                         className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
@@ -712,8 +712,8 @@ export default function ConfigureParameters() {
                   </div>
                   <div className="flex justify-between text-xs text-gray-500">
                     <span>128</span>
-                    <span>1024</span>
                     <span>2048</span>
+                    <span>4096</span>
                   </div>
                 </div>
                 

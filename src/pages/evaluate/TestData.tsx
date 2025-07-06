@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../../components/ui/Card';
+import { Progress } from '../../components/ui/Progress';
 import { cn } from '../../utils/cn';
 import { Button } from '../../components/ui/Button';
 import { useDropzone } from 'react-dropzone';
@@ -61,10 +62,15 @@ export default function TestData() {
   const [error, setError] = useState<string | null>(null);
   const [validationResult, setValidationResult] = useState<any>(null);
   
+  // Upload progress state
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing' | 'complete' | 'error'>('idle');
+  const [uploadedFileName, setUploadedFileName] = useState<string>('');
+  
   // Mapping interface state
   const [showMappingInterface, setShowMappingInterface] = useState(false);
   const [fileContent, setFileContent] = useState<string>('');
-  const [fileType, setFileType] = useState<'csv' | 'json' | 'jsonl' | null>(null);
+  const [fileType, setFileType] = useState<'csv' | 'json' | 'jsonl' | 'pkl' | 'pickle' | null>(null);
   const [availableColumns, setAvailableColumns] = useState<string[]>([]);
   const [columnInfo, setColumnInfo] = useState<Record<string, any>>({});
   const [isAnalyzingFile, setIsAnalyzingFile] = useState(false);
@@ -227,7 +233,8 @@ export default function TestData() {
     accept: {
       'text/csv': ['.csv'],
       'application/json': ['.json'],
-      'application/jsonl': ['.jsonl']
+      'application/jsonl': ['.jsonl'],
+      'application/octet-stream': ['.pkl', '.pickle']
     },
     maxFiles: 1,
     onDrop: async (acceptedFiles) => {
@@ -241,7 +248,7 @@ export default function TestData() {
         try {
           const fileType = evaluationService.getFileType(uploadedFile.name);
           if (!fileType) {
-            setError('Unsupported file format. Please upload CSV, JSON, or JSONL files.');
+            setError('Unsupported file format. Please upload CSV, JSON, JSONL, or Pickle files.');
             return;
           }
 
@@ -333,15 +340,35 @@ export default function TestData() {
     
     setIsLoading(true);
     setError(null);
+    setUploadProgress(0);
+    setUploadStatus('uploading');
+    setUploadedFileName(file.name);
 
     try {
+      // Simulate upload progress since the current backend doesn't support streaming
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90; // Stop at 90% until actual upload completes
+          }
+          return prev + Math.random() * 15;
+        });
+      }, 200);
+
       // Convert file to base64 and get file type
       const content = await readFileContent(file);
       const type = evaluationService.getFileType(file.name);
       
+      // Clear the progress interval
+      clearInterval(progressInterval);
+      
       if (!type) {
         throw new Error('Unsupported file format');
       }
+      
+      setUploadProgress(95);
+      setUploadStatus('processing');
       
       // Store file content and type for mapping interface
       setFileContent(content);
@@ -354,11 +381,23 @@ export default function TestData() {
       setColumnInfo(analysis.columnInfo);
       setIsAnalyzingFile(false);
       
-      // Show mapping interface
-      setShowMappingInterface(true);
+      setUploadProgress(100);
+      setUploadStatus('complete');
+      
+      // Small delay to show completion
+      setTimeout(() => {
+        // Show mapping interface
+        setShowMappingInterface(true);
+        // Reset upload state
+        setUploadProgress(0);
+        setUploadStatus('idle');
+        setUploadedFileName('');
+      }, 1000);
       
     } catch (error: any) {
       setError(error.message || 'Failed to analyze file. Please try again.');
+      setUploadStatus('error');
+      setUploadProgress(0);
       setIsAnalyzingFile(false);
     } finally {
       setIsLoading(false);
@@ -839,7 +878,7 @@ export default function TestData() {
                           {isDragActive ? "Drop the file here" : "Drag & drop your test file here or click to browse"}
                         </p>
                         <p className="text-sm text-gray-500 dark:text-gray-400">
-                          Supports CSV, JSON, and JSONL files up to 50MB
+                          Supports CSV, JSON, JSONL, and Pickle files up to 50MB
                         </p>
                         <p className="text-xs text-gray-400">
                           Required fields: instruction, output | Optional: input
@@ -908,6 +947,66 @@ export default function TestData() {
                       </Button>
                     </div>
                   </div>
+                )}
+
+                {/* Upload Progress */}
+                {uploadStatus !== 'idle' && (
+                  <Card className="bg-gray-50 dark:bg-gray-800">
+                    <CardContent className="p-4">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            {uploadedFileName}
+                          </span>
+                          <span className="text-sm text-gray-500 dark:text-gray-400">
+                            {uploadStatus === 'uploading' ? 'Uploading' :
+                             uploadStatus === 'processing' ? 'Processing' :
+                             uploadStatus === 'complete' ? 'Complete' :
+                             uploadStatus === 'error' ? 'Failed' : ''}
+                          </span>
+                        </div>
+                        
+                        <Progress
+                          value={uploadProgress}
+                          max={100}
+                          variant={
+                            uploadStatus === 'complete' ? 'success' :
+                            uploadStatus === 'error' ? 'error' :
+                            'primary'
+                          }
+                          showValue={true}
+                          formatValue={(value, max) => `${Math.round(value)}%`}
+                        />
+                        
+                        <div className="flex items-center text-sm">
+                          {uploadStatus === 'uploading' && (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                              <span className="text-blue-600 dark:text-blue-400">Uploading test data...</span>
+                            </>
+                          )}
+                          {uploadStatus === 'processing' && (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600 mr-2"></div>
+                              <span className="text-purple-600 dark:text-purple-400">Analyzing file structure...</span>
+                            </>
+                          )}
+                          {uploadStatus === 'complete' && (
+                            <>
+                              <CheckCircle className="h-4 w-4 text-green-600 mr-2" />
+                              <span className="text-green-600 dark:text-green-400">Upload completed successfully!</span>
+                            </>
+                          )}
+                          {uploadStatus === 'error' && (
+                            <>
+                              <AlertTriangle className="h-4 w-4 text-red-600 mr-2" />
+                              <span className="text-red-600 dark:text-red-400">Upload failed. Please try again.</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 )}
 
                 {/* Evaluation Guidelines */}

@@ -34,6 +34,13 @@ export interface EvaluationMapping {
   input_columns: Record<string, string>; // maps model input fields to file columns
   output_column?: string; // Legacy: which column contains the expected/ground truth output
   output_columns?: Record<string, string>; // New: maps JSON fields to CSV columns
+  // Dynamic instruction configuration
+  instruction_source?: 'static' | 'column' | 'file'; // Source of instructions
+  instruction_column?: string; // Column name for instructions (when source is 'column')
+  instruction_file_content?: string; // Base64 encoded instruction file (when source is 'file')
+  instruction_file_type?: 'json' | 'csv' | 'jsonl'; // Type of instruction file
+  instruction_file_mapping?: Record<string, string>; // How to map instruction file to dataset
+  static_instruction?: string; // Fallback static instruction
   preprocessing_options: {
     normalize_text: boolean;
     handle_missing_values: 'skip' | 'default' | 'error';
@@ -161,7 +168,7 @@ class EvaluationService {
   async startPredictionJobWithBase64(
     modelPath: string,
     fileContent: string,
-    fileType: 'csv' | 'json' | 'jsonl',
+    fileType: 'csv' | 'json' | 'jsonl' | 'pkl' | 'pickle',
     batchSize: number = 50
   ): Promise<EvaluationResponse> {
     const response = await fetch(`${API_BASE_URL}/evaluate/predict-file`, {
@@ -191,7 +198,7 @@ class EvaluationService {
   async startPredictionJobWithMapping(
     modelPath: string,
     fileContent: string,
-    fileType: 'csv' | 'json' | 'jsonl',
+    fileType: 'csv' | 'json' | 'jsonl' | 'pkl' | 'pickle',
     mapping: EvaluationMapping,
     batchSize: number = 50
   ): Promise<EvaluationResponse> {
@@ -222,7 +229,7 @@ class EvaluationService {
    */
   async analyzeFileColumns(
     fileContent: string,
-    fileType: 'csv' | 'json' | 'jsonl'
+    fileType: 'csv' | 'json' | 'jsonl' | 'pkl' | 'pickle'
   ): Promise<{
     columns: string[];
     columnInfo: Record<string, {
@@ -263,7 +270,7 @@ class EvaluationService {
    */
   async validateMapping(
     fileContent: string,
-    fileType: 'csv' | 'json' | 'jsonl',
+    fileType: 'csv' | 'json' | 'jsonl' | 'pkl' | 'pickle',
     mapping: EvaluationMapping,
     modelSchema: { input_schema: Record<string, any>; output_schema: Record<string, any> }
   ): Promise<{
@@ -510,7 +517,7 @@ class EvaluationService {
   /**
    * Get file type from filename
    */
-  getFileType(filename: string): 'csv' | 'json' | 'jsonl' | null {
+  getFileType(filename: string): 'csv' | 'json' | 'jsonl' | 'pkl' | 'pickle' | null {
     const extension = filename.toLowerCase().split('.').pop();
     
     switch (extension) {
@@ -520,6 +527,10 @@ class EvaluationService {
         return 'json';
       case 'jsonl':
         return 'jsonl';
+      case 'pkl':
+        return 'pkl';
+      case 'pickle':
+        return 'pickle';
       default:
         return null;
     }
