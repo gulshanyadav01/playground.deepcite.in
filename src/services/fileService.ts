@@ -8,6 +8,7 @@ export interface ColumnConfig {
   custom_template?: string;
 }
 
+
 export interface ColumnMapping {
   static_instruction?: string;
   instruction_columns: ColumnConfig[];
