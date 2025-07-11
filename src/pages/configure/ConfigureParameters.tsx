@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { HelpCircle, RotateCcw, Settings, ChevronDown, ChevronUp, AlertCircle, Check } from 'lucide-react';
-import { Tooltip } from '../../components/ui/Tooltip';
+import { RotateCcw, Settings, ChevronDown, ChevronUp, AlertCircle, Check, Upload, Download, Plus, X, Copy, FileText, HelpCircle } from 'lucide-react';
 import { createTrainingConfig } from '../../config/training';
 import { useConfigureContext } from './ConfigureContext';
 import { StepNavigation } from '../../components/ui/StepProgress';
@@ -22,20 +21,108 @@ export default function ConfigureParameters() {
   const { parameters, trainingConfig, selectedBaseModel, files, validationStatus, activeModelTab, selectedFileId } = state;
 
   // Local state for UI
-  const [showAdvancedParams, setShowAdvancedParams] = useState(false);
   const [showLoRAConfig, setShowLoRAConfig] = useState(true);
   const [showQuantizationConfig, setShowQuantizationConfig] = useState(true);
-  const [showOptimization, setShowOptimization] = useState(false);
-  const [showTrainingStability, setShowTrainingStability] = useState(false);
-  const [showMemoryPerformance, setShowMemoryPerformance] = useState(false);
+  const [showOptimization, setShowOptimization] = useState(true);
+  const [showTrainingStability, setShowTrainingStability] = useState(true);
+  const [showMemoryPerformance, setShowMemoryPerformance] = useState(true);
+  const [showCustomParams, setShowCustomParams] = useState(true);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [currentConfigName, setCurrentConfigName] = useState('Default Settings');
+  
+  // JSON Import/Export state
+  const [jsonImportText, setJsonImportText] = useState('');
+  const [showJsonImport, setShowJsonImport] = useState(false);
+  const [jsonImportError, setJsonImportError] = useState<string | null>(null);
+  
+  // Custom parameters state
+  const [customParameters, setCustomParameters] = useState<Array<{id: string, key: string, value: string, type: 'string' | 'number' | 'boolean'}>>([]);
+  
+  // Display state for number inputs (what user sees while typing)
+  const [displayValues, setDisplayValues] = useState<{
+    epochs: string;
+    learningRate: string;
+    batchSize: string;
+    maxSequenceLength: string;
+    loggingSteps: string;
+    cutoff: string;
+    // Training config display values
+    maxSampleSize: string;
+    loraRank: string;
+    loraAlpha: string;
+    loraDropout: string;
+    warmupSteps: string;
+    adamBeta1: string;
+    adamBeta2: string;
+    maxGradNorm: string;
+    gradAccumSteps: string;
+    weightDecay: string;
+    dropoutRate: string;
+    attentionDropout: string;
+    labelSmoothing: string;
+    dataloaderWorkers: string;
+  }>({
+    epochs: '',
+    learningRate: '',
+    batchSize: '',
+    maxSequenceLength: '',
+    loggingSteps: '',
+    cutoff: '',
+    maxSampleSize: '',
+    loraRank: '',
+    loraAlpha: '',
+    loraDropout: '',
+    warmupSteps: '',
+    adamBeta1: '',
+    adamBeta2: '',
+    maxGradNorm: '',
+    gradAccumSteps: '',
+    weightDecay: '',
+    dropoutRate: '',
+    attentionDropout: '',
+    labelSmoothing: '',
+    dataloaderWorkers: '',
+  });
   
   // Selected file metadata state - can be either file metadata or dataset metadata
   const [selectedFileMetadata, setSelectedFileMetadata] = useState<FileMetadata | null>(null);
   const [selectedDatasetMetadata, setSelectedDatasetMetadata] = useState<ProcessedDataset | null>(null);
   const [isLoadingFileMetadata, setIsLoadingFileMetadata] = useState(false);
   const [isDatasetSelected, setIsDatasetSelected] = useState(false);
+
+  // Initialize display values when parameters change
+  useEffect(() => {
+    setDisplayValues(prev => ({
+      ...prev,
+      epochs: parameters.epochs.toString(),
+      learningRate: parameters.learningRate.toString(),
+      batchSize: parameters.batchSize.toString(),
+      maxSequenceLength: parameters.maxSequenceLength.toString(),
+      loggingSteps: parameters.loggingSteps.toString(),
+      cutoff: Math.round(parameters.cutoff * 100).toString(),
+    }));
+  }, [parameters]);
+
+  // Initialize training config display values
+  useEffect(() => {
+    setDisplayValues(prev => ({
+      ...prev,
+      maxSampleSize: trainingConfig.max_sample_size?.toString() || '',
+      loraRank: trainingConfig.lora_rank.toString(),
+      loraAlpha: trainingConfig.lora_alpha.toString(),
+      loraDropout: trainingConfig.lora_dropout.toString(),
+      warmupSteps: trainingConfig.warmup_steps.toString(),
+      adamBeta1: trainingConfig.adam_beta1.toString(),
+      adamBeta2: trainingConfig.adam_beta2.toString(),
+      maxGradNorm: trainingConfig.max_grad_norm.toString(),
+      gradAccumSteps: trainingConfig.gradient_accumulation_steps.toString(),
+      weightDecay: trainingConfig.weight_decay.toString(),
+      dropoutRate: trainingConfig.dropout_rate.toString(),
+      attentionDropout: trainingConfig.attention_dropout.toString(),
+      labelSmoothing: trainingConfig.label_smoothing_factor.toString(),
+      dataloaderWorkers: trainingConfig.dataloader_num_workers.toString(),
+    }));
+  }, [trainingConfig]);
 
   // Load selected file/dataset metadata when selectedFileId changes
   useEffect(() => {
@@ -93,56 +180,83 @@ export default function ConfigureParameters() {
     });
   };
 
-  // Helper function to handle number input changes without immediate fallbacks
-  const handleNumberInputChange = (field: string, value: string, min: number, max: number, isInteger: boolean = true) => {
-    // Allow empty string during editing
-    if (value === '') {
-      return;
-    }
+  // New improved input handlers using display state
+  const handleDisplayValueChange = (field: keyof typeof displayValues, value: string) => {
+    setDisplayValues(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Helper function to handle number input changes with real-time display updates
+  const handleNumberInputChange = (field: string, displayField: keyof typeof displayValues, value: string, min: number, max: number, isInteger: boolean = true) => {
+    // Always update display value immediately for real-time feedback
+    handleDisplayValueChange(displayField, value);
     
-    const numValue = isInteger ? parseInt(value) : parseFloat(value);
-    
-    // Only update if it's a valid number within range
-    if (!isNaN(numValue) && numValue >= min && numValue <= max) {
-      handleParameterChange(field, numValue);
+    // Only update stored value if it's a valid number within range
+    if (value !== '') {
+      const numValue = isInteger ? parseInt(value) : parseFloat(value);
+      if (!isNaN(numValue) && numValue >= min && numValue <= max) {
+        handleParameterChange(field, numValue);
+      }
     }
   };
 
-  // Helper function for training config number inputs
-  const handleTrainingConfigNumberChange = (field: string, value: string, min: number, max: number, isInteger: boolean = true) => {
-    // Allow empty string during editing
-    if (value === '') {
-      return;
-    }
+  // Helper function for training config number inputs with real-time display updates
+  const handleTrainingConfigNumberChange = (field: string, displayField: keyof typeof displayValues, value: string, min: number, max: number, isInteger: boolean = true) => {
+    // Always update display value immediately for real-time feedback
+    handleDisplayValueChange(displayField, value);
     
-    const numValue = isInteger ? parseInt(value) : parseFloat(value);
-    
-    // Only update if it's a valid number within range
-    if (!isNaN(numValue) && numValue >= min && numValue <= max) {
-      handleTrainingConfigChange(field, numValue);
+    // Only update stored value if it's a valid number within range
+    if (value !== '') {
+      const numValue = isInteger ? parseInt(value) : parseFloat(value);
+      if (!isNaN(numValue) && numValue >= min && numValue <= max) {
+        handleTrainingConfigChange(field, numValue);
+      }
     }
   };
 
   // Helper function to handle input blur (when user finishes editing)
-  const handleNumberInputBlur = (field: string, value: string, min: number, defaultValue: number, isInteger: boolean = true) => {
+  const handleNumberInputBlur = (field: string, displayField: keyof typeof displayValues, value: string, min: number, max: number, defaultValue: number, isInteger: boolean = true) => {
     if (value === '' || isNaN(isInteger ? parseInt(value) : parseFloat(value))) {
+      // Reset to default value
       handleParameterChange(field, defaultValue);
+      handleDisplayValueChange(displayField, defaultValue.toString());
     } else {
       const numValue = isInteger ? parseInt(value) : parseFloat(value);
       if (numValue < min) {
+        // Clamp to minimum value
         handleParameterChange(field, min);
+        handleDisplayValueChange(displayField, min.toString());
+      } else if (numValue > max) {
+        // Clamp to maximum value
+        handleParameterChange(field, max);
+        handleDisplayValueChange(displayField, max.toString());
+      } else {
+        // Valid value, ensure it's stored
+        handleParameterChange(field, numValue);
+        handleDisplayValueChange(displayField, numValue.toString());
       }
     }
   };
 
   // Helper function for training config input blur
-  const handleTrainingConfigInputBlur = (field: string, value: string, min: number, defaultValue: number, isInteger: boolean = true) => {
+  const handleTrainingConfigInputBlur = (field: string, displayField: keyof typeof displayValues, value: string, min: number, max: number, defaultValue: number, isInteger: boolean = true) => {
     if (value === '' || isNaN(isInteger ? parseInt(value) : parseFloat(value))) {
+      // Reset to default value
       handleTrainingConfigChange(field, defaultValue);
+      handleDisplayValueChange(displayField, defaultValue.toString());
     } else {
       const numValue = isInteger ? parseInt(value) : parseFloat(value);
       if (numValue < min) {
+        // Clamp to minimum value
         handleTrainingConfigChange(field, min);
+        handleDisplayValueChange(displayField, min.toString());
+      } else if (numValue > max) {
+        // Clamp to maximum value
+        handleTrainingConfigChange(field, max);
+        handleDisplayValueChange(displayField, max.toString());
+      } else {
+        // Valid value, ensure it's stored
+        handleTrainingConfigChange(field, numValue);
+        handleDisplayValueChange(displayField, numValue.toString());
       }
     }
   };
@@ -162,6 +276,112 @@ export default function ConfigureParameters() {
   // Helper function to handle input focus - select all text for easy replacement
   const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
     e.target.select();
+  };
+
+  // JSON Import/Export functions
+  const handleJsonImport = () => {
+    try {
+      setJsonImportError(null);
+      const config = JSON.parse(jsonImportText);
+      
+      // Support multiple JSON formats
+      if (config.basic_parameters && config.advanced_parameters) {
+        // Our internal format
+        handleLoadConfig(config);
+      } else if (config.epochs || config.learning_rate || config.num_train_epochs) {
+        // Direct parameters format
+        const basicParams: any = {};
+        const advancedParams: any = {};
+        
+        // Map common parameter names
+        if (config.epochs) basicParams.epochs = config.epochs;
+        if (config.num_train_epochs) basicParams.epochs = config.num_train_epochs;
+        if (config.learning_rate) basicParams.learningRate = config.learning_rate;
+        if (config.per_device_train_batch_size) basicParams.batchSize = config.per_device_train_batch_size;
+        if (config.max_seq_length) basicParams.maxSequenceLength = config.max_seq_length;
+        if (config.logging_steps) basicParams.loggingSteps = config.logging_steps;
+        if (config.model_name) basicParams.modelName = config.model_name;
+        
+        // Map advanced parameters
+        Object.keys(config).forEach(key => {
+          if (!['epochs', 'num_train_epochs', 'learning_rate', 'per_device_train_batch_size', 'max_seq_length', 'logging_steps', 'model_name'].includes(key)) {
+            advancedParams[key] = config[key];
+          }
+        });
+        
+        handleLoadConfig({
+          basic_parameters: basicParams,
+          advanced_parameters: advancedParams
+        });
+      } else {
+        // Assume it's all advanced parameters
+        handleLoadConfig({
+          basic_parameters: {},
+          advanced_parameters: config
+        });
+      }
+      
+      setJsonImportText('');
+      setShowJsonImport(false);
+      toast.success('Configuration imported successfully!');
+    } catch (error: any) {
+      setJsonImportError('Invalid JSON format: ' + error.message);
+    }
+  };
+
+  const handleJsonExport = () => {
+    const config = {
+      basic_parameters: parameters,
+      advanced_parameters: trainingConfig,
+      custom_parameters: customParameters.reduce((acc, param) => {
+        let value: any = param.value;
+        if (param.type === 'number') {
+          value = parseFloat(param.value);
+        } else if (param.type === 'boolean') {
+          value = param.value === 'true';
+        }
+        acc[param.key] = value;
+        return acc;
+      }, {} as Record<string, any>),
+      metadata: {
+        name: currentConfigName,
+        exported_at: new Date().toISOString(),
+        version: '1.0'
+      }
+    };
+    
+    const jsonString = JSON.stringify(config, null, 2);
+    navigator.clipboard.writeText(jsonString);
+    toast.success('Configuration copied to clipboard!');
+  };
+
+  // Custom parameters functions
+  const addCustomParameter = () => {
+    const newParam = {
+      id: Date.now().toString(),
+      key: '',
+      value: '',
+      type: 'string' as const
+    };
+    setCustomParameters([...customParameters, newParam]);
+  };
+
+  const updateCustomParameter = (id: string, field: 'key' | 'value' | 'type', value: string) => {
+    setCustomParameters(params => 
+      params.map(param => 
+        param.id === id ? { ...param, [field]: value } : param
+      )
+    );
+  };
+
+  const removeCustomParameter = (id: string) => {
+    setCustomParameters(params => params.filter(param => param.id !== id));
+  };
+
+  const detectParameterType = (value: string): 'string' | 'number' | 'boolean' => {
+    if (value === 'true' || value === 'false') return 'boolean';
+    if (!isNaN(Number(value)) && value.trim() !== '') return 'number';
+    return 'string';
   };
 
   const resetToDefaults = () => {
@@ -414,6 +634,87 @@ export default function ConfigureParameters() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
 
+          {/* Quick Configuration - JSON Import/Export */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <FileText className="h-5 w-5" />
+                  <span>Quick Configuration</span>
+                </div>
+                <div className="flex space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowJsonImport(!showJsonImport)}
+                    leftIcon={<Upload className="h-4 w-4" />}
+                  >
+                    Import JSON
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleJsonExport}
+                    leftIcon={<Download className="h-4 w-4" />}
+                  >
+                    Export JSON
+                  </Button>
+                </div>
+              </CardTitle>
+              <CardDescription>
+                Import configuration from JSON or export current settings
+              </CardDescription>
+            </CardHeader>
+            {showJsonImport && (
+              <CardContent>
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-4"
+                >
+                  <div>
+                    <label htmlFor="jsonImport" className="block text-sm font-medium mb-2">
+                      Paste Configuration JSON
+                    </label>
+                    <textarea
+                      id="jsonImport"
+                      value={jsonImportText}
+                      onChange={(e) => setJsonImportText(e.target.value)}
+                      className="w-full h-32 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      placeholder='{"basic_parameters": {...}, "advanced_parameters": {...}}'
+                    />
+                    {jsonImportError && (
+                      <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                        {jsonImportError}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex space-x-3">
+                    <Button
+                      variant="primary"
+                      onClick={handleJsonImport}
+                      disabled={!jsonImportText.trim()}
+                    >
+                      Import & Apply
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setJsonImportText('');
+                        setJsonImportError(null);
+                        setShowJsonImport(false);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </motion.div>
+              </CardContent>
+            )}
+          </Card>
+
           {/* Model Name and Description */}
           <Card>
     <CardHeader>
@@ -467,9 +768,6 @@ export default function ConfigureParameters() {
                   Automatically upload your fine-tuned model to Hugging Face Hub after training
                 </p>
               </div>
-              <Tooltip content="Upload your trained model to Hugging Face Hub for easy sharing and deployment">
-                <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-              </Tooltip>
             </div>
 
             {trainingConfig.push_to_hub && (
@@ -551,224 +849,142 @@ export default function ConfigureParameters() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Epochs */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="epochs" className="block text-sm font-medium">
-                      Number of Epochs
-                    </label>
-                    <Tooltip content="How many times to iterate through the training data">
-                      <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                    </Tooltip>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <input
-                      type="range"
-                      id="epochs"
-                      min="1"
-                      max="10"
-                      step="1"
-                      value={parameters.epochs}
-                      onChange={(e) => handleParameterChange('epochs', parseInt(e.target.value))}
-                      className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                    />
-                    <div className="w-16">
-                      <input
-                        type="number"
-                        min="1"
-                        max="10"
-                        step="1"
-                        value={parameters.epochs}
-                        onChange={(e) => handleNumberInputChange('epochs', e.target.value, 1, 10, true)}
-                        onBlur={(e) => handleNumberInputBlur('epochs', e.target.value, 1, 3, true)}
-                        onFocus={handleInputFocus}
-                        className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-between text-xs text-gray-500">
-                    <span>1</span>
-                    <span>5</span>
-                    <span>10</span>
-                  </div>
+                  <label htmlFor="epochs" className="block text-sm font-medium">
+                    Number of Epochs
+                  </label>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                    How many times to iterate through the training data
+                  </p>
+                  <input
+                    type="number"
+                    id="epochs"
+                    min="1"
+                    max="10"
+                    step="1"
+                    value={displayValues.epochs}
+                    onChange={(e) => handleNumberInputChange('epochs', 'epochs', e.target.value, 1, 10, true)}
+                    onBlur={(e) => handleNumberInputBlur('epochs', 'epochs', e.target.value, 1, 10, 3, true)}
+                    onFocus={handleInputFocus}
+                    placeholder="3 (recommended)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Typical range: 1-10 epochs
+                  </p>
                 </div>
                 
                 {/* Learning Rate */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="learningRate" className="block text-sm font-medium">
-                      Learning Rate
-                    </label>
-                    <Tooltip content="Controls how quickly the model adapts to new data">
-                      <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                    </Tooltip>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <input
-                      type="range"
-                      id="learningRate"
-                      min="0.00001"
-                      max="0.001"
-                      step="0.00001"
-                      value={parameters.learningRate}
-                      onChange={(e) => handleParameterChange('learningRate', parseFloat(e.target.value))}
-                      className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                    />
-                    <div className="w-24">
-                      <input
-                        type="number"
-                        min="0.00001"
-                        max="0.001"
-                        step="0.00001"
-                        value={parameters.learningRate}
-                        onChange={(e) => handleNumberInputChange('learningRate', e.target.value, 0.00001, 0.001, false)}
-                        onBlur={(e) => handleNumberInputBlur('learningRate', e.target.value, 0.00001, 0.0002, false)}
-                        onFocus={handleInputFocus}
-                        className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-between text-xs text-gray-500">
-                    <span>1e-5</span>
-                    <span>5e-4</span>
-                    <span>1e-3</span>
-                  </div>
+                  <label htmlFor="learningRate" className="block text-sm font-medium">
+                    Learning Rate
+                  </label>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                    Controls how quickly the model adapts to new data
+                  </p>
+                  <input
+                    type="number"
+                    id="learningRate"
+                    min="0.00001"
+                    max="0.001"
+                    step="0.00001"
+                    value={displayValues.learningRate}
+                    onChange={(e) => handleNumberInputChange('learningRate', 'learningRate', e.target.value, 0.00001, 0.001, false)}
+                    onBlur={(e) => handleNumberInputBlur('learningRate', 'learningRate', e.target.value, 0.00001, 0.001, 0.0002, false)}
+                    onFocus={handleInputFocus}
+                    placeholder="0.0002 (recommended)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Typical range: 0.00001 - 0.001
+                  </p>
                 </div>
                 
                 {/* Batch Size */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="batchSize" className="block text-sm font-medium">
-                      Batch Size
-                    </label>
-                    <Tooltip content="Number of training examples used in one iteration">
-                      <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                    </Tooltip>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <input
-                      type="range"
-                      id="batchSize"
-                      min="1"
-                      max="32"
-                      step="1"
-                      value={parameters.batchSize}
-                      onChange={(e) => handleParameterChange('batchSize', parseInt(e.target.value))}
-                      className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                    />
-                    <div className="w-16">
-                      <input
-                        type="number"
-                        min="1"
-                        max="32"
-                        step="1"
-                        value={parameters.batchSize}
-                        onChange={(e) => handleNumberInputChange('batchSize', e.target.value, 1, 32, true)}
-                        onBlur={(e) => handleNumberInputBlur('batchSize', e.target.value, 1, 8, true)}
-                        onFocus={handleInputFocus}
-                        className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-between text-xs text-gray-500">
-                    <span>1</span>
-                    <span>16</span>
-                    <span>32</span>
-                  </div>
+                  <label htmlFor="batchSize" className="block text-sm font-medium">
+                    Batch Size
+                  </label>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                    Number of training examples used in one iteration
+                  </p>
+                  <input
+                    type="number"
+                    id="batchSize"
+                    min="1"
+                    max="32"
+                    step="1"
+                    value={displayValues.batchSize}
+                    onChange={(e) => handleNumberInputChange('batchSize', 'batchSize', e.target.value, 1, 32, true)}
+                    onBlur={(e) => handleNumberInputBlur('batchSize', 'batchSize', e.target.value, 1, 32, 8, true)}
+                    onFocus={handleInputFocus}
+                    placeholder="8 (recommended)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Typical range: 1-32
+                  </p>
                 </div>
                 
                 {/* Max Sequence Length */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="maxSequenceLength" className="block text-sm font-medium">
-                      Max Sequence Length
-                    </label>
-                    <Tooltip content="Maximum length of input text sequences">
-                      <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                    </Tooltip>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <input
-                      type="range"
-                      id="maxSequenceLength"
-                      min="128"
-                      max="4096"
-                      step="128"
-                      value={parameters.maxSequenceLength}
-                      onChange={(e) => handleParameterChange('maxSequenceLength', parseInt(e.target.value))}
-                      className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                    />
-                    <div className="w-20">
-                      <input
-                        type="number"
-                        min="128"
-                        max="4096"
-                        step="128"
-                        value={parameters.maxSequenceLength}
-                        onChange={(e) => handleNumberInputChange('maxSequenceLength', e.target.value, 128, 4096, true)}
-                        onBlur={(e) => handleNumberInputBlur('maxSequenceLength', e.target.value, 128, 2048, true)}
-                        onFocus={handleInputFocus}
-                        className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-between text-xs text-gray-500">
-                    <span>128</span>
-                    <span>2048</span>
-                    <span>4096</span>
-                  </div>
+                  <label htmlFor="maxSequenceLength" className="block text-sm font-medium">
+                    Max Sequence Length
+                  </label>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                    Maximum length of input text sequences
+                  </p>
+                  <input
+                    type="number"
+                    id="maxSequenceLength"
+                    min="128"
+                    max="4096"
+                    step="128"
+                    value={displayValues.maxSequenceLength}
+                    onChange={(e) => handleNumberInputChange('maxSequenceLength', 'maxSequenceLength', e.target.value, 128, 4096, true)}
+                    onBlur={(e) => handleNumberInputBlur('maxSequenceLength', 'maxSequenceLength', e.target.value, 128, 4096, 2048, true)}
+                    onFocus={handleInputFocus}
+                    placeholder="2048 (recommended)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Typical range: 128-4096
+                  </p>
                 </div>
                 
                 {/* Logging Steps */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="loggingSteps" className="block text-sm font-medium">
-                      Logging Steps
-                    </label>
-                    <Tooltip content="How often to log training metrics. Lower values provide more frequent updates but may slow training slightly.">
-                      <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                    </Tooltip>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <input
-                      type="range"
-                      id="loggingSteps"
-                      min="1"
-                      max="100"
-                      step="1"
-                      value={parameters.loggingSteps}
-                      onChange={(e) => handleParameterChange('loggingSteps', parseInt(e.target.value))}
-                      className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                    />
-                    <div className="w-16">
-                      <input
-                        type="number"
-                        min="1"
-                        max="100"
-                        step="1"
-                        value={parameters.loggingSteps}
-                        onChange={(e) => handleNumberInputChange('loggingSteps', e.target.value, 1, 100, true)}
-                        onBlur={(e) => handleNumberInputBlur('loggingSteps', e.target.value, 1, 10, true)}
-                        onFocus={handleInputFocus}
-                        className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-between text-xs text-gray-500">
-                    <span>1</span>
-                    <span>50</span>
-                    <span>100</span>
-                  </div>
+                  <label htmlFor="loggingSteps" className="block text-sm font-medium">
+                    Logging Steps
+                  </label>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                    How often to log training metrics. Lower values provide more frequent updates but may slow training slightly.
+                  </p>
+                  <input
+                    type="number"
+                    id="loggingSteps"
+                    min="1"
+                    max="100"
+                    step="1"
+                    value={displayValues.loggingSteps}
+                    onChange={(e) => handleNumberInputChange('loggingSteps', 'loggingSteps', e.target.value, 1, 100, true)}
+                    onBlur={(e) => handleNumberInputBlur('loggingSteps', 'loggingSteps', e.target.value, 1, 100, 10, true)}
+                    onFocus={handleInputFocus}
+                    placeholder="10 (recommended)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Typical range: 1-100 steps
+                  </p>
                 </div>
 
                 {/* Max Sample Size */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="maxSampleSize" className="block text-sm font-medium">
-                      Max Sample Size
-                    </label>
-                    <Tooltip content="Limit the number of training samples. Leave empty to use all available data. Useful for quick experiments with large datasets.">
-                      <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                    </Tooltip>
-                  </div>
+                  <label htmlFor="maxSampleSize" className="block text-sm font-medium">
+                    Max Sample Size
+                  </label>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                    Limit the number of training samples. Leave empty to use all available data. Useful for quick experiments with large datasets.
+                  </p>
                   <div className="flex items-center space-x-3">
                     <input
                       type="checkbox"
@@ -788,30 +1004,20 @@ export default function ConfigureParameters() {
                     </label>
                   </div>
                   {trainingConfig.max_sample_size !== null && (
-                    <div className="flex items-center space-x-3 mt-2">
+                    <div className="mt-2">
                       <input
-                        type="range"
+                        type="number"
                         id="maxSampleSize"
                         min="10"
-                        max="100000"
+                        max="1000000"
                         step="10"
                         value={trainingConfig.max_sample_size || 1000}
-                        onChange={(e) => handleTrainingConfigChange('max_sample_size', parseInt(e.target.value))}
-                        className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
+                        onChange={(e) => handleTrainingConfigNumberChange('max_sample_size', 'maxSampleSize', e.target.value, 10, 1000000, true)}
+                        onBlur={(e) => handleTrainingConfigInputBlur('max_sample_size', 'maxSampleSize', e.target.value, 10, 1000000, 1000, true)}
+                        onFocus={handleInputFocus}
+                        placeholder="1000 (recommended)"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                       />
-                      <div className="w-24">
-                        <input
-                          type="number"
-                          min="10"
-                          max="1000000"
-                          step="10"
-                          value={trainingConfig.max_sample_size || 1000}
-                          onChange={(e) => handleTrainingConfigNumberChange('max_sample_size', e.target.value, 10, 1000000, true)}
-                          onBlur={(e) => handleTrainingConfigInputBlur('max_sample_size', e.target.value, 10, 1000, true)}
-                          onFocus={handleInputFocus}
-                          className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                        />
-                      </div>
                     </div>
                   )}
                   {trainingConfig.max_sample_size !== null && selectedFileMetadata && (
@@ -829,75 +1035,45 @@ export default function ConfigureParameters() {
                 
                 {/* Training/Validation Split */}
                 <div className="space-y-2 md:col-span-2">
-                  <div className="flex items-center justify-between">
+                  <div className=" items-center justify-between">
                     <label htmlFor="cutoff" className="block text-sm font-medium">
                       Training/Validation Split
                     </label>
-                    <Tooltip content="Percentage of data used for training vs. validation">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Percentage of data used for training vs. validation.</p>
+                    {/* <Tooltip content="Percentage of data used for training vs. validation">
                       <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                    </Tooltip>
+                    </Tooltip> */}
                   </div>
-                  <div className="flex items-center space-x-3">
-                    <input
-                      type="range"
-                      id="cutoff"
-                      min="0.1"
-                      max="0.95"
-                      step="0.05"
-                      value={parameters.cutoff}
-                      onChange={(e) => handleParameterChange('cutoff', parseFloat(e.target.value))}
-                      
-                      className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                    />
-                    <div className="w-20">
-                      <input
-                        type="number"
-                        min="0.5"
-                        max="0.95"
-                        step="0.05"
-                        value={Math.round(parameters.cutoff * 100)}
-                        onChange={(e) => handleParameterChange('cutoff', (parseInt(e.target.value) || 50) / 100)}
-                        onFocus={handleInputFocus}
-                        className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-between text-xs text-gray-500">
-                    <span>50%</span>
-                    <span>75%</span>
-                    <span>95%</span>
-                  </div>
+                  <input
+                    type="number"
+                    id="cutoff"
+                    min="50"
+                    max="95"
+                    step="5"
+                    value={Math.round(parameters.cutoff * 100)}
+                    onChange={(e) => handleParameterChange('cutoff', (parseInt(e.target.value) || 80) / 100)}
+                    onFocus={handleInputFocus}
+                    placeholder="80 (recommended)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Typical range: 50-95% for training
+                  </p>
                 </div>
                 </div>
               </div>
 
-              {/* Advanced Parameters Section */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
+              {/* Model Architecture & Configuration */}
+              <div className="space-y-8">
+                <div className="border-b border-gray-200 dark:border-gray-700 pb-2">
                   <div className="flex items-center space-x-2">
                     <Settings className="h-5 w-5" />
                     <div>
-                      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Advanced Parameters</h4>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Fine-tune optimization, LoRA, memory settings, and monitoring options</p>
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Model Architecture & Configuration</h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Configure LoRA, quantization, optimization, and performance settings</p>
                     </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowAdvancedParams(!showAdvancedParams)}
-                    leftIcon={showAdvancedParams ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  >
-                    {showAdvancedParams ? 'Hide Advanced' : 'Show Advanced'}
-                  </Button>
                 </div>
-                {showAdvancedParams && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="space-y-8"
-                  >
 
                   {/* Quantization Configuration */}
                   <div className="space-y-4">
@@ -926,13 +1102,14 @@ export default function ConfigureParameters() {
                       >
                         {/* Quantization Method */}
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between">
+                          <div className=" items-center justify-between">
                             <label htmlFor="quantization" className="block text-sm font-medium">
                               Quantization Method
                             </label>
-                            <Tooltip content="Quantization reduces memory usage by using lower precision weights. Choose based on your hardware constraints and accuracy requirements.">
-                              <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                            </Tooltip>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                            Quantization reduces memory usage by using lower precision weights. Choose based on your hardware constraints and accuracy requirements.
+                            </p>
+                            
                           </div>
                           <select
                             id="quantization"
@@ -986,117 +1163,87 @@ export default function ConfigureParameters() {
                       >
                         {/* LoRA Rank */}
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between">
+                          <div className=" items-center justify-between">
                             <label htmlFor="loraRank" className="block text-sm font-medium">
                               LoRA Rank
                             </label>
-                            <Tooltip content="Rank of the low-rank adaptation matrices. Higher values allow more expressiveness but use more memory.">
-                              <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                            </Tooltip>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                            Rank of the low-rank adaptation matrices. Higher values allow more expressiveness but use more memory.
+                            </p>
+                            
                           </div>
-                          <div className="flex items-center space-x-3">
-                            <input
-                              type="range"
-                              id="loraRank"
-                              min="1"
-                              max="64"
-                              step="1"
-                              value={trainingConfig.lora_rank}
-                              onChange={(e) => handleTrainingConfigChange('lora_rank', parseInt(e.target.value))}
-                              className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                            />
-                            <div className="w-16">
-                              <input
-                                type="number"
-                                min="1"
-                                max="64"
-                                step="1"
-                                value={trainingConfig.lora_rank}
-                                onChange={(e) => handleTrainingConfigChange('lora_rank', parseInt(e.target.value) || 1)}
-                                onFocus={handleInputFocus}
-                                className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                              />
-                            </div>
-                          </div>
+                          <input
+                            type="number"
+                            id="loraRank"
+                            min="1"
+                            max="64"
+                            step="1"
+                            value={trainingConfig.lora_rank}
+                            onChange={(e) => handleTrainingConfigChange('lora_rank', parseInt(e.target.value) || 1)}
+                            onFocus={handleInputFocus}
+                            placeholder="8 (recommended)"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          />
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Typical range: 1-64
+                          </p>
                         </div>
 
                         
 
                         {/* LoRA Alpha */}
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between">
+                          <div className=" items-center justify-between">
                             <label htmlFor="loraAlpha" className="block text-sm font-medium">
                               LoRA Alpha
                             </label>
-                            <Tooltip content="Scaling factor for LoRA. Typically set to 2x the rank value.">
-                              <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                            </Tooltip>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                            Scaling factor for LoRA. Typically set to 2x the rank value.
+                            </p>
                           </div>
-                          <div className="flex items-center space-x-3">
-                            <input
-                              type="range"
-                              id="loraAlpha"
-                              min="1"
-                              max="128"
-                              step="1"
-                              value={trainingConfig.lora_alpha}
-                              onChange={(e) => handleTrainingConfigChange('lora_alpha', parseInt(e.target.value))}
-                              className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                            />
-                            <div className="w-16">
-                              <input
-                                type="number"
-                                min="1"
-                                max="128"
-                                step="1"
-                                value={trainingConfig.lora_alpha}
-                                onChange={(e) => handleTrainingConfigChange('lora_alpha', parseInt(e.target.value) || 1)}
-                                onFocus={handleInputFocus}
-                                className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                              />
-                            </div>
-                          </div>
+                          <input
+                            type="number"
+                            id="loraAlpha"
+                            min="1"
+                            max="128"
+                            step="1"
+                            value={trainingConfig.lora_alpha}
+                            onChange={(e) => handleTrainingConfigChange('lora_alpha', parseInt(e.target.value) || 1)}
+                            onFocus={handleInputFocus}
+                            placeholder="16 (recommended)"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          />
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Typical range: 1-128
+                          </p>
                         </div>
 
                         {/* LoRA Dropout */}
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between">
+                          <div className=" items-center justify-between">
                             <label htmlFor="loraDropout" className="block text-sm font-medium">
                               LoRA Dropout
                             </label>
-                            <Tooltip content="Dropout rate applied to LoRA layers for regularization.">
-                              <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                            </Tooltip>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                            Dropout rate applied to LoRA layers for regularization.
+                            </p>
+                            
                           </div>
-                          <div className="flex items-center space-x-3">
-                            <input
-                              type="range"
-                              id="loraDropout"
-                              min="0"
-                              max="0.5"
-                              step="0.01"
-                              value={trainingConfig.lora_dropout}
-                              onChange={(e) => handleTrainingConfigChange('lora_dropout', parseFloat(e.target.value))}
-                              className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                            />
-                            <div className="w-16">
-                              <input
-                                type="number"
-                                min="0"
-                                max="0.5"
-                                step="0.01"
-                                value={trainingConfig.lora_dropout}
-                                onChange={(e) => handleTrainingConfigChange('lora_dropout', parseFloat(e.target.value) || 0)}
-                                onFocus={handleInputFocus}
-                                className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                              />
-                            </div>
-                          </div>
-                          <div className="flex justify-between text-xs text-gray-500">
-                            <span>0</span>
-                            <span>0.25</span>
-                            <span>0.5</span>
-                          </div>
+                          <input
+                            type="number"
+                            id="loraDropout"
+                            min="0"
+                            max="0.5"
+                            step="0.01"
+                            value={trainingConfig.lora_dropout}
+                            onChange={(e) => handleTrainingConfigChange('lora_dropout', parseFloat(e.target.value) || 0)}
+                            onFocus={handleInputFocus}
+                            placeholder="0.1 (recommended)"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          />
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Typical range: 0-0.5
+                          </p>
                         </div>
 
                       </motion.div>
@@ -1130,13 +1277,14 @@ export default function ConfigureParameters() {
                         className="grid grid-cols-1 md:grid-cols-2 gap-6"
                       >
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between">
+                          <div className=" items-center justify-between">
                             <label htmlFor="lrScheduler" className="block text-sm font-medium">
                               Learning Rate Scheduler
                             </label>
-                            <Tooltip content="Learning rate scheduling strategy during training.">
-                              <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                            </Tooltip>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                            Learning rate scheduling strategy during training.
+                            </p>
+                            
                           </div>
                           <select
                             id="lrScheduler"
@@ -1153,178 +1301,137 @@ export default function ConfigureParameters() {
                         </div>
 
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between">
+                          <div className=" items-center justify-between">
                             <label htmlFor="warmupSteps" className="block text-sm font-medium">
                               Warmup Steps
                             </label>
-                            <Tooltip content="Number of steps to gradually increase learning rate from 0 to target value.">
-                              <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                            </Tooltip>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                            Number of steps to gradually increase learning rate from 0 to target value.
+                            </p>
                           </div>
-                          <div className="flex items-center space-x-3">
-                            <input
-                              type="range"
-                              id="warmupSteps"
-                              min="0"
-                              max="1000"
-                              step="10"
-                              value={trainingConfig.warmup_steps}
-                              onChange={(e) => handleTrainingConfigChange('warmup_steps', parseInt(e.target.value))}
-                              className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                            />
-                            <div className="w-20">
-                              <input
-                                type="number"
-                                min="0"
-                                max="1000"
-                                step="10"
-                                value={trainingConfig.warmup_steps}
-                                onChange={(e) => handleTrainingConfigChange('warmup_steps', parseInt(e.target.value) || 0)}
-                                onFocus={handleInputFocus}
-                                className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                              />
-                            </div>
-                          </div>
+                          <input
+                            type="number"
+                            id="warmupSteps"
+                            min="0"
+                            max="1000"
+                            step="10"
+                            value={trainingConfig.warmup_steps}
+                            onChange={(e) => handleTrainingConfigChange('warmup_steps', parseInt(e.target.value) || 0)}
+                            onFocus={handleInputFocus}
+                            placeholder="100 (recommended)"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          />
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Typical range: 0-1000 steps
+                          </p>
                         </div>
 
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between">
+                          <div className=" items-center justify-between">
                             <label htmlFor="adamBeta1" className="block text-sm font-medium">
                               Adam Beta1
                             </label>
-                            <Tooltip content="Exponential decay rate for first moment estimates in Adam optimizer.">
-                              <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                            </Tooltip>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                            Exponential decay rate for first moment estimates in Adam optimizer.
+                            </p>
+                            
                           </div>
-                          <div className="flex items-center space-x-3">
-                            <input
-                              type="range"
-                              id="adamBeta1"
-                              min="0.8"
-                              max="0.99"
-                              step="0.01"
-                              value={trainingConfig.adam_beta1}
-                              onChange={(e) => handleTrainingConfigChange('adam_beta1', parseFloat(e.target.value))}
-                              className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                            />
-                            <div className="w-16">
-                              <input
-                                type="number"
-                                min="0.8"
-                                max="0.99"
-                                step="0.01"
-                                value={trainingConfig.adam_beta1}
-                                onChange={(e) => handleTrainingConfigChange('adam_beta1', parseFloat(e.target.value) || 0.9)}
-                                onFocus={handleInputFocus}
-                                className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                              />
-                            </div>
-                          </div>
+                          <input
+                            type="number"
+                            id="adamBeta1"
+                            min="0.8"
+                            max="0.99"
+                            step="0.01"
+                            value={trainingConfig.adam_beta1}
+                            onChange={(e) => handleTrainingConfigChange('adam_beta1', parseFloat(e.target.value) || 0.9)}
+                            onFocus={handleInputFocus}
+                            placeholder="0.9 (recommended)"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          />
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Typical range: 0.8-0.99
+                          </p>
                         </div>
 
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between">
+                          <div className=" items-center justify-between">
                             <label htmlFor="adamBeta2" className="block text-sm font-medium">
                               Adam Beta2
                             </label>
-                            <Tooltip content="Exponential decay rate for second moment estimates in Adam optimizer.">
-                              <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                            </Tooltip>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                            Exponential decay rate for second moment estimates in Adam optimizer.
+                            </p>
+                            
                           </div>
-                          <div className="flex items-center space-x-3">
-                            <input
-                              type="range"
-                              id="adamBeta2"
-                              min="0.99"
-                              max="0.9999"
-                              step="0.0001"
-                              value={trainingConfig.adam_beta2}
-                              onChange={(e) => handleTrainingConfigChange('adam_beta2', parseFloat(e.target.value))}
-                              className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                            />
-                            <div className="w-20">
-                              <input
-                                type="number"
-                                min="0.99"
-                                max="0.9999"
-                                step="0.0001"
-                                value={trainingConfig.adam_beta2}
-                                onChange={(e) => handleTrainingConfigChange('adam_beta2', parseFloat(e.target.value) || 0.999)}
-                                onFocus={handleInputFocus}
-                                className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                              />
-                            </div>
-                          </div>
+                          <input
+                            type="number"
+                            id="adamBeta2"
+                            min="0.99"
+                            max="0.9999"
+                            step="0.0001"
+                            value={trainingConfig.adam_beta2}
+                            onChange={(e) => handleTrainingConfigChange('adam_beta2', parseFloat(e.target.value) || 0.999)}
+                            onFocus={handleInputFocus}
+                            placeholder="0.999 (recommended)"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          />
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Typical range: 0.99-0.9999
+                          </p>
                         </div>
 
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between">
+                          <div className=" items-center justify-between">
                             <label htmlFor="maxGradNorm" className="block text-sm font-medium">
                               Max Gradient Norm
                             </label>
-                            <Tooltip content="Maximum norm for gradient clipping to prevent exploding gradients.">
-                              <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                            </Tooltip>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                            Maximum norm for gradient clipping to prevent exploding gradients.
+                            </p>
+                            
                           </div>
-                          <div className="flex items-center space-x-3">
-                            <input
-                              type="range"
-                              id="maxGradNorm"
-                              min="0.1"
-                              max="10"
-                              step="0.1"
-                              value={trainingConfig.max_grad_norm}
-                              onChange={(e) => handleTrainingConfigChange('max_grad_norm', parseFloat(e.target.value))}
-                              className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                            />
-                            <div className="w-16">
-                              <input
-                                type="number"
-                                min="0.1"
-                                max="10"
-                                step="0.1"
-                                value={trainingConfig.max_grad_norm}
-                                onChange={(e) => handleTrainingConfigChange('max_grad_norm', parseFloat(e.target.value) || 1.0)}
-                                onFocus={handleInputFocus}
-                                className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                              />
-                            </div>
-                          </div>
+                          <input
+                            type="number"
+                            id="maxGradNorm"
+                            min="0.1"
+                            max="10"
+                            step="0.1"
+                            value={trainingConfig.max_grad_norm}
+                            onChange={(e) => handleTrainingConfigChange('max_grad_norm', parseFloat(e.target.value) || 1.0)}
+                            onFocus={handleInputFocus}
+                            placeholder="1.0 (recommended)"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          />
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Typical range: 0.1-10
+                          </p>
                         </div>
 
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between">
+                          <div className=" items-center justify-between">
                             <label htmlFor="gradAccumSteps" className="block text-sm font-medium">
                               Gradient Accumulation Steps
                             </label>
-                            <Tooltip content="Number of steps to accumulate gradients before updating model weights.">
-                              <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                            </Tooltip>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                            Number of steps to accumulate gradients before updating model weights.
+                            </p>
+                            
                           </div>
-                          <div className="flex items-center space-x-3">
-                            <input
-                              type="range"
-                              id="gradAccumSteps"
-                              min="1"
-                              max="32"
-                              step="1"
-                              value={trainingConfig.gradient_accumulation_steps}
-                              onChange={(e) => handleTrainingConfigChange('gradient_accumulation_steps', parseInt(e.target.value))}
-                              className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                            />
-                            <div className="w-16">
-                              <input
-                                type="number"
-                                min="1"
-                                max="32"
-                                step="1"
-                                value={trainingConfig.gradient_accumulation_steps}
-                                onChange={(e) => handleTrainingConfigChange('gradient_accumulation_steps', parseInt(e.target.value) || 1)}
-                                onFocus={handleInputFocus}
-                                className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                              />
-                            </div>
-                          </div>
+                          <input
+                            type="number"
+                            id="gradAccumSteps"
+                            min="1"
+                            max="32"
+                            step="1"
+                            value={trainingConfig.gradient_accumulation_steps}
+                            onChange={(e) => handleTrainingConfigChange('gradient_accumulation_steps', parseInt(e.target.value) || 1)}
+                            onFocus={handleInputFocus}
+                            placeholder="4 (recommended)"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          />
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Typical range: 1-32 steps
+                          </p>
                         </div>
                       </motion.div>
                     )}
@@ -1356,143 +1463,108 @@ export default function ConfigureParameters() {
                         className="grid grid-cols-1 md:grid-cols-2 gap-6"
                       >
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between">
+                          <div className=" items-center justify-between">
                             <label htmlFor="weightDecay" className="block text-sm font-medium">
                               Weight Decay
                             </label>
-                            <Tooltip content="L2 regularization parameter to prevent overfitting.">
-                              <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                            </Tooltip>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                            L2 regularization parameter to prevent overfitting.
+                            </p>
+                            
                           </div>
-                          <div className="flex items-center space-x-3">
-                            <input
-                              type="range"
-                              id="weightDecay"
-                              min="0"
-                              max="0.1"
-                              step="0.001"
-                              value={trainingConfig.weight_decay}
-                              onChange={(e) => handleTrainingConfigChange('weight_decay', parseFloat(e.target.value))}
-                              className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                            />
-                            <div className="w-20">
-                              <input
-                                type="number"
-                                min="0"
-                                max="0.1"
-                                step="0.001"
-                                value={trainingConfig.weight_decay}
-                                onChange={(e) => handleTrainingConfigChange('weight_decay', parseFloat(e.target.value) || 0)}
-                                onFocus={handleInputFocus}
-                                className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                              />
-                            </div>
-                          </div>
+                          <input
+                            type="number"
+                            id="weightDecay"
+                            min="0"
+                            max="0.1"
+                            step="0.001"
+                            value={trainingConfig.weight_decay}
+                            onChange={(e) => handleTrainingConfigChange('weight_decay', parseFloat(e.target.value) || 0)}
+                            onFocus={handleInputFocus}
+                            placeholder="0.01 (recommended)"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          />
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Typical range: 0-0.1
+                          </p>
                         </div>
 
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between">
+                          <div className=" items-center justify-between">
                             <label htmlFor="dropoutRate" className="block text-sm font-medium">
                               Dropout Rate
                             </label>
-                            <Tooltip content="Probability of randomly setting input units to 0 during training.">
-                              <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                            </Tooltip>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                            Probability of randomly setting input units to 0 during training.
+                            </p>
                           </div>
-                          <div className="flex items-center space-x-3">
-                            <input
-                              type="range"
-                              id="dropoutRate"
-                              min="0"
-                              max="0.5"
-                              step="0.01"
-                              value={trainingConfig.dropout_rate}
-                              onChange={(e) => handleTrainingConfigChange('dropout_rate', parseFloat(e.target.value))}
-                              className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                            />
-                            <div className="w-16">
-                              <input
-                                type="number"
-                                min="0"
-                                max="0.5"
-                                step="0.01"
-                                value={trainingConfig.dropout_rate}
-                                onChange={(e) => handleTrainingConfigChange('dropout_rate', parseFloat(e.target.value) || 0)}
-                                onFocus={handleInputFocus}
-                                className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                              />
-                            </div>
-                          </div>
+                          <input
+                            type="number"
+                            id="dropoutRate"
+                            min="0"
+                            max="0.5"
+                            step="0.01"
+                            value={trainingConfig.dropout_rate}
+                            onChange={(e) => handleTrainingConfigChange('dropout_rate', parseFloat(e.target.value) || 0)}
+                            onFocus={handleInputFocus}
+                            placeholder="0.1 (recommended)"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          />
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Typical range: 0-0.5
+                          </p>
                         </div>
 
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between">
+                          <div className=" items-center justify-between">
                             <label htmlFor="attentionDropout" className="block text-sm font-medium">
                               Attention Dropout
                             </label>
-                            <Tooltip content="Dropout rate specifically applied to attention layers.">
-                              <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                            </Tooltip>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                            Dropout rate specifically applied to attention layers.
+                            </p>
                           </div>
-                          <div className="flex items-center space-x-3">
-                            <input
-                              type="range"
-                              id="attentionDropout"
-                              min="0"
-                              max="0.5"
-                              step="0.01"
-                              value={trainingConfig.attention_dropout}
-                              onChange={(e) => handleTrainingConfigChange('attention_dropout', parseFloat(e.target.value))}
-                              className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                            />
-                            <div className="w-16">
-                              <input
-                                type="number"
-                                min="0"
-                                max="0.5"
-                                step="0.01"
-                                value={trainingConfig.attention_dropout}
-                                onChange={(e) => handleTrainingConfigChange('attention_dropout', parseFloat(e.target.value) || 0)}
-                                onFocus={handleInputFocus}
-                                className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                              />
-                            </div>
-                          </div>
+                          <input
+                            type="number"
+                            id="attentionDropout"
+                            min="0"
+                            max="0.5"
+                            step="0.01"
+                            value={trainingConfig.attention_dropout}
+                            onChange={(e) => handleTrainingConfigChange('attention_dropout', parseFloat(e.target.value) || 0)}
+                            onFocus={handleInputFocus}
+                            placeholder="0.1 (recommended)"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          />
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Typical range: 0-0.5
+                          </p>
                         </div>
 
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between">
+                          <div className=" items-center justify-between">
                             <label htmlFor="labelSmoothing" className="block text-sm font-medium">
                               Label Smoothing
                             </label>
-                            <Tooltip content="Smooths target labels to prevent overconfident predictions.">
-                              <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                            </Tooltip>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                            Smooths target labels to prevent overconfident predictions.
+                            </p>
                           </div>
-                          <div className="flex items-center space-x-3">
-                            <input
-                              type="range"
-                              id="labelSmoothing"
-                              min="0"
-                              max="0.3"
-                              step="0.01"
-                              value={trainingConfig.label_smoothing_factor}
-                              onChange={(e) => handleTrainingConfigChange('label_smoothing_factor', parseFloat(e.target.value))}
-                              className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                            />
-                            <div className="w-16">
-                              <input
-                                type="number"
-                                min="0"
-                                max="0.3"
-                                step="0.01"
-                                value={trainingConfig.label_smoothing_factor}
-                                onChange={(e) => handleTrainingConfigChange('label_smoothing_factor', parseFloat(e.target.value) || 0)}
-                                onFocus={handleInputFocus}
-                                className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                              />
-                            </div>
-                          </div>
+                          <input
+                            type="number"
+                            id="labelSmoothing"
+                            min="0"
+                            max="0.3"
+                            step="0.01"
+                            value={trainingConfig.label_smoothing_factor}
+                            onChange={(e) => handleTrainingConfigChange('label_smoothing_factor', parseFloat(e.target.value) || 0)}
+                            onFocus={handleInputFocus}
+                            placeholder="0 (recommended)"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          />
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Typical range: 0-0.3
+                          </p>
                         </div>
                       </motion.div>
                     )}
@@ -1525,38 +1597,30 @@ export default function ConfigureParameters() {
                       >
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div className="space-y-2">
-                            <div className="flex items-center justify-between">
+                            <div className=" items-center justify-between">
                               <label htmlFor="dataloaderWorkers" className="block text-sm font-medium">
                                 Dataloader Workers
                               </label>
-                              <Tooltip content="Number of parallel workers for data loading.">
-                                <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                              </Tooltip>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                              Number of parallel workers for data loading.
+                            </p>
+                              
                             </div>
-                            <div className="flex items-center space-x-3">
-                              <input
-                                type="range"
-                                id="dataloaderWorkers"
-                                min="0"
-                                max="8"
-                                step="1"
-                                value={trainingConfig.dataloader_num_workers}
-                                onChange={(e) => handleTrainingConfigChange('dataloader_num_workers', parseInt(e.target.value))}
-                                className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                              />
-                              <div className="w-16">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="8"
-                                  step="1"
-                                  value={trainingConfig.dataloader_num_workers}
-                                  onChange={(e) => handleTrainingConfigChange('dataloader_num_workers', parseInt(e.target.value) || 0)}
-                                  onFocus={handleInputFocus}
-                                  className="w-full px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                                />
-                              </div>
-                            </div>
+                            <input
+                              type="number"
+                              id="dataloaderWorkers"
+                              min="0"
+                              max="8"
+                              step="1"
+                              value={trainingConfig.dataloader_num_workers}
+                              onChange={(e) => handleTrainingConfigChange('dataloader_num_workers', parseInt(e.target.value) || 0)}
+                              onFocus={handleInputFocus}
+                              placeholder="4 (recommended)"
+                              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            />
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              Typical range: 0-8 workers
+                            </p>
                           </div>
 
                         </div>
@@ -1580,9 +1644,11 @@ export default function ConfigureParameters() {
                                 </p>
                               </div>
                             </div>
-                            <Tooltip content="Pins memory for faster GPU data transfer">
-                              <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                            </Tooltip>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                              Number of parallel workers for data loading.
+                            </p>
+                              
+                            
                           </div>
                           
                           <div className="flex items-center justify-between">
@@ -1603,9 +1669,7 @@ export default function ConfigureParameters() {
                                 </p>
                               </div>
                             </div>
-                            <Tooltip content="Reduces memory usage at the cost of additional computation">
-                              <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                            </Tooltip>
+                            
                           </div>
                           
                           <div className="flex items-center justify-between">
@@ -1626,9 +1690,7 @@ export default function ConfigureParameters() {
                                 </p>
                               </div>
                             </div>
-                            <Tooltip content="Uses 16-bit floating point for faster training">
-                              <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                            </Tooltip>
+                         
                           </div>
                           
                           <div className="flex items-center justify-between">
@@ -1649,16 +1711,133 @@ export default function ConfigureParameters() {
                                 </p>
                               </div>
                             </div>
-                            <Tooltip content="Brain floating point 16-bit with better numerical stability">
-                              <HelpCircle className="h-4 w-4 text-gray-400 cursor-help" />
-                            </Tooltip>
+                         
                           </div>
                         </div>
                       </motion.div>
                     )}
                   </div>
-                  </motion.div>
-                )}
+
+                  {/* Custom Parameters */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
+                      <div className="flex items-center space-x-2">
+                        <Plus className="h-4 w-4" />
+                        <div>
+                          <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Custom Parameters</h4>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Add custom training parameters not covered above</p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowCustomParams(!showCustomParams)}
+                        leftIcon={showCustomParams ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                        className="text-xs"
+                      >
+                        {showCustomParams ? 'Hide' : 'Show'}
+                      </Button>
+                    </div>
+                    {showCustomParams && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="space-y-4"
+                      >
+                        {customParameters.length === 0 ? (
+                          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                            <Plus className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                            <p className="text-sm">No custom parameters added yet</p>
+                            <p className="text-xs">Click "Add Parameter" to add custom training parameters</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {customParameters.map((param) => (
+                              <div key={param.id} className="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                      Parameter Name
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={param.key}
+                                      onChange={(e) => updateCustomParameter(param.id, 'key', e.target.value)}
+                                      placeholder="parameter_name"
+                                      className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                      Value
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={param.value}
+                                      onChange={(e) => {
+                                        updateCustomParameter(param.id, 'value', e.target.value);
+                                        // Auto-detect type
+                                        const detectedType = detectParameterType(e.target.value);
+                                        if (detectedType !== param.type) {
+                                          updateCustomParameter(param.id, 'type', detectedType);
+                                        }
+                                      }}
+                                      placeholder="value"
+                                      className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                      Type
+                                    </label>
+                                    <select
+                                      value={param.type}
+                                      onChange={(e) => updateCustomParameter(param.id, 'type', e.target.value)}
+                                      className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                    >
+                                      <option value="string">String</option>
+                                      <option value="number">Number</option>
+                                      <option value="boolean">Boolean</option>
+                                    </select>
+                                  </div>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeCustomParameter(param.id)}
+                                  className="p-1 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        
+                        <div className="flex justify-center pt-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={addCustomParameter}
+                            leftIcon={<Plus className="h-4 w-4" />}
+                          >
+                            Add Custom Parameter
+                          </Button>
+                        </div>
+                        
+                        {customParameters.length > 0 && (
+                          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                            <p className="text-xs text-blue-800 dark:text-blue-200">
+                              <strong>Note:</strong> Custom parameters will be passed directly to the training script. 
+                              Make sure parameter names and values are valid for your training framework.
+                            </p>
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </div>
               </div>
             </CardContent>
           </Card>
