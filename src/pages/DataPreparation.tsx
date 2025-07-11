@@ -205,106 +205,107 @@ export const DataPreparation: React.FC = () => {
   };
 
   const DatasetCard: React.FC<{ dataset: ProcessedDataset }> = ({ dataset }) => (
-    <Card className="hover:shadow-lg transition-shadow">
-      <CardHeader className="pb-3">
-        <div className="flex justify-between items-start">
-          <div className="flex-1">
-            <CardTitle className="text-lg">{dataset.name}</CardTitle>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              {dataset.description || 'No description'}
-            </p>
-          </div>
-          <div className="flex space-x-1">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setPreviewDataset(dataset);
-                setCurrentView('preview');
-              }}
-              className="h-8 w-8 p-0"
-            >
-              <Eye className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleDownloadDataset(dataset.dataset_id)}
-              className="h-8 w-8 p-0"
-            >
-              <Download className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleDuplicateDataset(dataset)}
-              className="h-8 w-8 p-0"
-            >
-              <Copy className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleDeleteDataset(dataset.dataset_id)}
-              className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-              {dataset.total_examples.toLocaleString()}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">Examples</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-              {dataset.processing_stats.success_rate.toFixed(1)}%
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">Success Rate</div>
-          </div>
-        </div>
-        
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-600 dark:text-gray-400">Source:</span>
-            <span className="font-medium">{dataset.source_filename}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600 dark:text-gray-400">Size:</span>
-            <span className="font-medium">{datasetService.formatFileSize(dataset.file_size)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600 dark:text-gray-400">Created:</span>
-            <span className="font-medium">{datasetService.formatRelativeTime(dataset.created_at)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600 dark:text-gray-400">Usage:</span>
-            <span className={`font-medium ${datasetService.getDatasetStatusColor(dataset)}`}>
-              {dataset.usage_count} times
-            </span>
-          </div>
-        </div>
-        
-        {dataset.tags.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1">
-            {dataset.tags.map((tag, index) => (
-              <span
-                key={index}
-                className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200"
+    <div className="cursor-pointer transition-all duration-200 hover:shadow-md p-4 rounded-lg border-2 border-gray-200 dark:border-gray-700 hover:border-blue-300">
+      <div className="flex items-center justify-between">
+        <div className="flex-1">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              {dataset.name}
+            </h3>
+            <div className="flex space-x-1">
+              <button
+                onClick={() => {
+                  setPreviewDataset(dataset);
+                  setCurrentView('preview');
+                }}
+                className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
               >
-                <Tag className="h-3 w-3 mr-1" />
-                {tag}
-              </span>
-            ))}
+                <Eye className="h-4 w-4 text-gray-500" />
+              </button>
+              <button
+                onClick={() => handleDownloadDataset(dataset.dataset_id)}
+                className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <Download className="h-4 w-4 text-gray-500" />
+              </button>
+              <button
+                onClick={() => handleDuplicateDataset(dataset)}
+                className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <Copy className="h-4 w-4 text-gray-500" />
+              </button>
+              <button
+                onClick={() => handleDeleteDataset(dataset.dataset_id)}
+                className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-red-600 hover:text-red-700"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
           </div>
-        )}
-      </CardContent>
-    </Card>
+          
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            {dataset.description || 'No description'}
+          </p>
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-8">
+              <div className="text-center">
+                <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                  {dataset.total_examples.toLocaleString()}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Examples</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                  {dataset.processing_stats.success_rate.toFixed(1)}%
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Success Rate</div>
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-6 text-sm">
+              <div className="flex items-center">
+                <span className="text-gray-600 dark:text-gray-400">Source:</span>
+                <span className="font-medium ml-2 truncate max-w-48">{dataset.source_filename}</span>
+              </div>
+              <div className="flex items-center">
+                <span className="text-gray-600 dark:text-gray-400">Size:</span>
+                <span className="font-medium ml-2">{datasetService.formatFileSize(dataset.file_size)}</span>
+              </div>
+              <div className="flex items-center">
+                <span className="text-gray-600 dark:text-gray-400">Created:</span>
+                <span className="font-medium ml-2">{datasetService.formatRelativeTime(dataset.created_at)}</span>
+              </div>
+              <div className="flex items-center">
+                <span className="text-gray-600 dark:text-gray-400">Usage:</span>
+                <span className={`font-medium ml-2 ${datasetService.getDatasetStatusColor(dataset)}`}>
+                  {dataset.usage_count} times
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          {dataset.tags.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1">
+              {dataset.tags.slice(0, 3).map((tag, index) => (
+                <span
+                  key={index}
+                  className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200"
+                >
+                  <Tag className="h-3 w-3 mr-1" />
+                  {tag}
+                </span>
+              ))}
+              {dataset.tags.length > 3 && (
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  +{dataset.tags.length - 3} more
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 
   const ListView = () => (
@@ -438,7 +439,7 @@ export const DataPreparation: React.FC = () => {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="space-y-3">
           {filteredDatasets.map(dataset => (
             <DatasetCard key={dataset.dataset_id} dataset={dataset} />
           ))}
@@ -903,7 +904,7 @@ export const DataPreparation: React.FC = () => {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="max-w-4xl px-4 py-8">
       <AnimatePresence mode="wait">
         <motion.div
           key={currentView}
